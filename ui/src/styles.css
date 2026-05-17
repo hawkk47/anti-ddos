@@ -1,0 +1,403 @@
+/* ============================================================
+   anti-ddos admin — DA "Neon Console"
+   - Accents : orange #ff7b1c (primaire), bleu #5aa6ff, violet #b266ff
+   - Surfaces sombres, fond grille pointillée subtile
+   - Corners en équerre sur les cartes (i.corners > i)
+   - Glow doux sur états live / hot, jamais sur le repos
+   - Inter (UI) + JetBrains Mono (chiffres tabulaires)
+   - Espacement 4/8/12/16/24, radius 10px cards, 6px controls
+   ============================================================ */
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg:            #0a0c10;
+  --bg-elev:       #0f1218;
+  --bg-elev-2:     #151922;
+  --bg-row:        rgba(255, 255, 255, 0.025);
+  --bg-row-hover:  rgba(255, 255, 255, 0.05);
+
+  /* Bordures */
+  --border:        #1d2230;
+  --border-strong: #2a3142;
+
+  /* Texte */
+  --text:        #e8ecf3;
+  --text-dim:    #9aa3b2;
+  --text-faint:  #5f6675;
+
+  /* Néon */
+  --neon-orange:        #ff7b1c;
+  --neon-orange-soft:   #ffa15a;
+  --neon-orange-dim:    rgba(255, 123, 28, 0.14);
+  --neon-orange-line:   rgba(255, 123, 28, 0.45);
+  --neon-orange-glow:   rgba(255, 123, 28, 0.55);
+
+  --neon-blue:          #5aa6ff;
+  --neon-blue-dim:      rgba(90, 166, 255, 0.14);
+  --neon-blue-line:     rgba(90, 166, 255, 0.45);
+
+  --neon-purple:        #b266ff;
+  --neon-purple-dim:    rgba(178, 102, 255, 0.14);
+  --neon-purple-line:   rgba(178, 102, 255, 0.45);
+
+  --neon-red:           #ff5a6a;
+  --neon-green:         #2fe0a1;
+  --neon-grid:          rgba(255, 255, 255, 0.04);
+
+  /* Cards */
+  --neon-card-bg:         #0f1218;
+  --neon-card-border:     #222838;
+  --neon-card-border-hot: rgba(255, 123, 28, 0.55);
+
+  /* Accent principal (utilisé par les éléments génériques) */
+  --accent:      var(--neon-orange);
+  --accent-soft: var(--neon-orange-soft);
+  --accent-tint: var(--neon-orange-dim);
+  --accent-line: var(--neon-orange-line);
+
+  /* Statuts */
+  --ok:    var(--neon-green);
+  --warn:  var(--neon-orange);
+  --err:   var(--neon-red);
+  --info:  var(--neon-blue);
+
+  /* Typo */
+  --font-ui:   'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-theme="light"] {
+  --bg:            #f5f7fa;
+  --bg-elev:       #ffffff;
+  --bg-elev-2:     #eef1f6;
+  --bg-row:        rgba(0, 0, 0, 0.025);
+  --bg-row-hover:  rgba(0, 0, 0, 0.05);
+  --border:        #e2e6ee;
+  --border-strong: #cdd3df;
+  --text:          #0f1218;
+  --text-dim:      #4a5163;
+  --text-faint:    #8a91a1;
+  --neon-grid:     rgba(0, 0, 0, 0.05);
+  --neon-card-bg:     #ffffff;
+  --neon-card-border: #e2e6ee;
+  color-scheme: light;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  height: 100%;
+}
+
+/* Fond global : très subtile grille de points, ne distrait pas */
+body {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(circle at 1px 1px, var(--neon-grid) 1px, transparent 0);
+  background-size: 22px 22px;
+  background-attachment: fixed;
+}
+
+#app { min-height: 100vh; }
+
+::selection { background: var(--neon-orange-dim); color: var(--text); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 10px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+a {
+  color: var(--neon-orange);
+  text-decoration: none;
+}
+a:hover { color: var(--neon-orange-soft); }
+
+button {
+  font: inherit;
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+button:hover { background: var(--bg-elev-2); border-color: var(--neon-orange-line); color: var(--neon-orange-soft); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.primary {
+  background: var(--neon-orange);
+  border-color: var(--neon-orange);
+  color: #1a0e02;
+  font-weight: 600;
+  box-shadow: 0 0 0 0 transparent, 0 0 12px var(--neon-orange-glow);
+}
+button.primary:hover { background: var(--neon-orange-soft); border-color: var(--neon-orange-soft); }
+button.danger {
+  background: transparent;
+  border-color: var(--neon-red);
+  color: var(--neon-red);
+}
+button.danger:hover { background: rgba(255, 90, 106, 0.10); }
+button.ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+
+input, select, textarea {
+  font: inherit;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  padding: 5px 8px;
+  border-radius: 6px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--neon-orange);
+  box-shadow: 0 0 0 3px var(--neon-orange-dim);
+}
+
+code, pre, .mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-feature-settings: "zero", "ss02";
+}
+
+/* ============ Tables ============ */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12.5px;
+}
+th, td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+th {
+  color: var(--text-faint);
+  font-weight: 500;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  background: transparent;
+  border-bottom: 1px solid var(--border-strong);
+}
+tr:hover td { background: var(--bg-row); }
+
+.neon-table th { color: var(--text-faint); }
+
+/* ============ Cards & corners ============ */
+.card,
+.neon-card {
+  background: var(--neon-card-bg);
+  border: 1px solid var(--neon-card-border);
+  border-radius: 10px;
+  position: relative;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+.card:hover,
+.neon-card:hover { border-color: var(--border-strong); }
+.neon-card.hot {
+  border-color: var(--neon-card-border-hot);
+  box-shadow: 0 0 0 1px var(--neon-orange-dim), 0 0 24px -6px var(--neon-orange-glow);
+}
+
+/* Corners en équerre (4 angles). Markup : <i class="corners"><i></i></i>
+   Fonctionne sur n'importe quelle carte/panel ayant `position: relative`. */
+.corners {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.corners::before,
+.corners::after,
+.corners > i::before,
+.corners > i::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: var(--neon-orange);
+  border-style: solid;
+  border-width: 0;
+  opacity: 0.75;
+  transition: opacity 180ms ease, border-color 180ms ease;
+}
+.corners::before {
+  top: -1px; left: -1px;
+  border-top-width: 1px; border-left-width: 1px;
+  border-top-left-radius: inherit;
+}
+.corners::after {
+  bottom: -1px; right: -1px;
+  border-bottom-width: 1px; border-right-width: 1px;
+  border-bottom-right-radius: inherit;
+}
+.corners > i { position: absolute; inset: 0; }
+.corners > i::before {
+  top: -1px; right: -1px;
+  border-top-width: 1px; border-right-width: 1px;
+  border-top-right-radius: inherit;
+}
+.corners > i::after {
+  bottom: -1px; left: -1px;
+  border-bottom-width: 1px; border-left-width: 1px;
+  border-bottom-left-radius: inherit;
+}
+
+.corners.blue::before, .corners.blue::after,
+.corners.blue > i::before, .corners.blue > i::after,
+.neon-card.blue .corners::before, .neon-card.blue .corners::after,
+.neon-card.blue .corners > i::before, .neon-card.blue .corners > i::after { border-color: var(--neon-blue); }
+
+.corners.purple::before, .corners.purple::after,
+.corners.purple > i::before, .corners.purple > i::after,
+.neon-card.purple .corners::before, .neon-card.purple .corners::after,
+.neon-card.purple .corners > i::before, .neon-card.purple .corners > i::after { border-color: var(--neon-purple); }
+
+.corners.dim::before, .corners.dim::after,
+.corners.dim > i::before, .corners.dim > i::after,
+.neon-card.dim .corners::before, .neon-card.dim .corners::after,
+.neon-card.dim .corners > i::before, .neon-card.dim .corners > i::after { border-color: var(--border-strong); opacity: 0.55; }
+
+.neon-card.hot .corners::before,
+.neon-card.hot .corners::after,
+.neon-card.hot .corners > i::before,
+.neon-card.hot .corners > i::after { opacity: 1; }
+
+/* Fond grille pointillée — réservé aux conteneurs qui le demandent */
+.neon-grid-bg {
+  background-color: var(--neon-card-bg);
+  background-image:
+    radial-gradient(circle at 1px 1px, var(--neon-grid) 1px, transparent 0);
+  background-size: 18px 18px;
+}
+
+/* ============ Labels & badges ============ */
+.neon-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--neon-orange);
+  font-weight: 600;
+}
+.neon-label.blue   { color: var(--neon-blue); }
+.neon-label.purple { color: var(--neon-purple); }
+.neon-label.dim    { color: var(--text-faint); }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+  line-height: 1.4;
+  font-weight: 500;
+}
+.badge.ok   { color: var(--neon-green);  border-color: rgba(47, 224, 161, 0.45); background: rgba(47, 224, 161, 0.10); }
+.badge.warn { color: var(--neon-orange); border-color: var(--neon-orange-line);  background: var(--neon-orange-dim); }
+.badge.err  { color: var(--neon-red);    border-color: rgba(255, 90, 106, 0.45); background: rgba(255, 90, 106, 0.10); }
+.badge.dim  { color: var(--text-faint); }
+
+/* ============ Pulse "live" ============ */
+@keyframes neon-pulse {
+  0%, 100% { opacity: 1;   box-shadow: 0 0 6px var(--neon-orange-glow); }
+  50%      { opacity: 0.55; box-shadow: 0 0 0 transparent; }
+}
+.live-dot {
+  display: inline-block;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--neon-orange);
+  animation: neon-pulse 1.6s ease-in-out infinite;
+  vertical-align: middle;
+}
+.live-dot.cold  { background: var(--text-faint); animation: none; box-shadow: none; }
+.live-dot.green { background: var(--neon-green); animation-name: neon-pulse-green; }
+.live-dot.red   { background: var(--neon-red);   animation-name: neon-pulse-red; }
+@keyframes neon-pulse-green {
+  0%, 100% { opacity: 1;   box-shadow: 0 0 6px rgba(47, 224, 161, 0.6); }
+  50%      { opacity: 0.55; box-shadow: 0 0 0 transparent; }
+}
+@keyframes neon-pulse-red {
+  0%, 100% { opacity: 1;   box-shadow: 0 0 6px rgba(255, 90, 106, 0.6); }
+  50%      { opacity: 0.55; box-shadow: 0 0 0 transparent; }
+}
+
+/* ============ Flux pointillés (PipelineDiagram) ============ */
+@keyframes flow-dash { to { stroke-dashoffset: -24; } }
+.flow-line {
+  fill: none;
+  stroke: var(--neon-orange);
+  stroke-width: 1.3;
+  stroke-dasharray: 3 5;
+  animation: flow-dash 1.6s linear infinite;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 3px var(--neon-orange-glow));
+}
+.flow-line.cold {
+  stroke: var(--border-strong);
+  opacity: 0.4;
+  animation: none;
+  filter: none;
+}
+.flow-line.hot {
+  stroke: var(--neon-orange);
+  opacity: 1;
+  stroke-width: 1.6;
+  filter: drop-shadow(0 0 5px var(--neon-orange-glow));
+}
+
+kbd {
+  font-family: var(--font-mono);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+/* ============ Utilitaires ============ */
+.text-dim    { color: var(--text-dim); }
+.text-faint  { color: var(--text-faint); }
+.text-accent { color: var(--neon-orange); }
+.text-blue   { color: var(--neon-blue); }
+.text-purple { color: var(--neon-purple); }
+.num-mono    { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

@@ -1,0 +1,38 @@
+# configs/base/tls.yaml
+#
+# Mitigations TLS. Source de vérité pour le control plane ; tout
+# changement passe par PUT /v1/mitigations/tls/:id (validation
+# TypeBox + schéma JSON).
+#
+# Schéma : configs/schemas/tls.schema.json
+
+version: 1
+
+rules:
+  - id: tls-renegotiation-flood
+    enabled: true
+    # fail-open (défaut AGENTS.md §3) : sur erreur interne du token
+    # bucket, on laisse passer le handshake plutôt que de couper le
+    # trafic légitime. La renégociation reste cependant toujours
+    # refusée au niveau crypto/tls (RenegotiateNever, non négociable).
+    on_error: allow
+    params:
+      # TLS 1.2 minimum : ferme la porte à TLS 1.0/1.1 (CVE BEAST,
+      # POODLE, faible forward secrecy). TLS 1.3 préférable mais
+      # quelques clients legacy restent en 1.2.
+      min_tls_version: "1.2"
+      # Taux soutenu de nouveaux handshakes par IP source. 50/s
+      # tolère des clients très actifs (multiplexage HTTP/1.1) sans
+      # ouvrir la porte à un flood de handshakes coûteux en CPU.
+      handshakes_per_second_per_ip: 50
+      # Capacité du bucket : permet une rafale de 20 nouvelles
+      # connexions (chargement d'une page riche en sous-domaines)
+      # avant d'appliquer le rate-limit soutenu.
+      burst: 20
+    notes: |
+      La protection se compose de deux couches :
+        1. crypto/tls : MinVersion + Renegotiation=RenegotiateNever
+           (pure-Go stdlib désactive déjà la renégo cliente par défaut,
+           on le rend explicite).
+        2. listener wrapper : token bucket par IP sur les Accept TCP,
+           qui rejette les flood AVANT le coût du handshake TLS.

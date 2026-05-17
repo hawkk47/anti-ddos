@@ -1,0 +1,32 @@
+# configs/base/bodies.yaml
+#
+# Mitigations sur le corps des requêtes HTTP. Source de vérité pour le
+# control plane ; tout changement passe par PUT /v1/mitigations/bodies/:id
+# (validation TypeBox + schéma JSON).
+#
+# Schéma : configs/schemas/bodies.schema.json
+
+version: 1
+
+rules:
+  - id: slow-post
+    enabled: true
+    # fail-open (défaut AGENTS.md §3) : variante Slowloris sur le body.
+    # En cas d'erreur interne, on laisse passer plutôt que de couper
+    # un upload légitime. Pas d'ADR contraire pour cette famille.
+    on_error: allow
+    params:
+      # Cap dur sur la taille du body. 8 MiB couvre les uploads
+      # modestes (avatars, pièces jointes). Ajuster si l'upstream
+      # accepte des fichiers plus gros.
+      max_body_bytes: 8388608
+      # Débit minimum exigé après la période de grâce. 1 KiB/s est
+      # plus lent que le pire 3G en charge — un client honnête le
+      # tient sans peine. Sous le seuil : connexion coupée.
+      min_bytes_per_second: 1024
+      # Tolérance initiale : TCP slow-start + TLS handshake + premier
+      # paquet TLV ; 2 s couvre 99 % des cas réseau légitimes.
+      grace_period_ms: 2000
+    notes: |
+      Mitigation: voir docs/threat-model.md#slow-post
+      Reproducer: proxy/mitigations/slowpost/slowpost_test.go (TestReproducer_*)

@@ -1,0 +1,47 @@
+# configs/base/cachepoison.yaml
+#
+# Mitigation cache-poisoning : retire (ou rejette) les request-headers
+# "unkeyed" qu'un attaquant pourrait utiliser pour influencer la
+# réponse cachée d'un CDN/reverse-cache aval.
+#
+# Référence : J. Kettle, "Practical Web Cache Poisoning",
+# Black Hat USA 2018. Cf. docs/threat-model.md#cache-poisoning.
+#
+# Source de vérité pour le control plane ; tout changement passe par
+# PUT /v1/mitigations/cache-poison/:id (validation TypeBox + schéma JSON).
+#
+# Schéma : configs/schemas/cachepoison.schema.json
+
+version: 1
+
+rules:
+  - id: cache-poison
+    enabled: true
+    # 'strip' = par défaut, retire silencieusement les headers avant
+    # forward upstream. Choix safe : ne casse pas un client mal
+    # configuré (proxy interne qui set X-Forwarded-Host par
+    # négligence) tout en cassant le primitif d'attaque.
+    # 'deny'  = opt-in pour environnements où ces headers ne devraient
+    # JAMAIS apparaître côté client public.
+    action: strip
+    params:
+      # Liste publiée par Kettle 2018 + extensions IIS / Symfony.
+      # IMPORTANT (AGENTS.md §6) : ne JAMAIS lister
+      # X-Forwarded-For / X-Forwarded-Proto / X-Real-IP — le proxy les
+      # gère lui-même (append, set canonique).
+      headers:
+        - X-Forwarded-Host
+        - X-Forwarded-Scheme
+        - X-Forwarded-Server
+        - X-Forwarded-Port
+        - X-Original-URL
+        - X-Rewrite-URL
+        - X-Original-Host
+        - X-Host
+        - X-HTTP-Method-Override
+        - X-Method-Override
+        - X-HTTP-Method
+    notes: |
+      Référence : Kettle 2018, "Practical Web Cache Poisoning".
+      Voir docs/threat-model.md#cache-poisoning et
+      tests/attacks/cache-poisoning/scenario.sh.

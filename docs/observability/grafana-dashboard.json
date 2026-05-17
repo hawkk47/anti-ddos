@@ -1,0 +1,136 @@
+{
+  "title": "anti-ddos — data plane overview",
+  "uid": "anti-ddos-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "timezone": "",
+  "tags": ["anti-ddos", "data-plane"],
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "job",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(mitigation_http_flood_l7_evaluated_total, job)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Mitigation errors_total (doit rester à 0)",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (__name__) ({__name__=~\"mitigation_.+_errors_total\", job=~\"$job\"})",
+          "legendFormat": "{{__name__}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "evaluated_total — débit par famille (req/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        { "refId": "A", "expr": "rate(mitigation_http_flood_l7_evaluated_total{job=~\"$job\"}[1m])", "legendFormat": "http-flood-l7" },
+        { "refId": "B", "expr": "rate(mitigation_slow_post_evaluated_total{job=~\"$job\"}[1m])", "legendFormat": "slow-post" },
+        { "refId": "C", "expr": "rate(mitigation_slowloris_evaluated_total{job=~\"$job\"}[1m])", "legendFormat": "slowloris" },
+        { "refId": "D", "expr": "rate(mitigation_large_header_evaluated_total{job=~\"$job\"}[1m])", "legendFormat": "large-header" },
+        { "refId": "E", "expr": "rate(mitigation_hash_flood_evaluated_total{job=~\"$job\"}[1m])", "legendFormat": "hash-flood" },
+        { "refId": "F", "expr": "rate(mitigation_range_amp_evaluated_total{job=~\"$job\"}[1m])", "legendFormat": "range-amp" },
+        { "refId": "G", "expr": "rate(mitigation_cache_poison_evaluated_total{job=~\"$job\"}[1m])", "legendFormat": "cache-poison" },
+        { "refId": "H", "expr": "rate(mitigation_http2_rapid_reset_evaluated_total{job=~\"$job\"}[1m])", "legendFormat": "http2-rapid-reset" },
+        { "refId": "I", "expr": "rate(mitigation_tls_renegotiation_flood_evaluated_total{job=~\"$job\"}[1m])", "legendFormat": "tls-reneg" },
+        { "refId": "J", "expr": "rate(mitigation_scraping_evaluated_total{job=~\"$job\"}[1m])", "legendFormat": "scraping" },
+        { "refId": "K", "expr": "rate(mitigation_credential_stuffing_evaluated_total{job=~\"$job\"}[1m])", "legendFormat": "credential-stuffing" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "blocked_total — actions bloquantes (req/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        { "refId": "A", "expr": "rate(mitigation_http_flood_l7_blocked_total{job=~\"$job\"}[1m])", "legendFormat": "http-flood-l7" },
+        { "refId": "B", "expr": "rate(mitigation_slow_post_blocked_total{job=~\"$job\"}[1m])", "legendFormat": "slow-post" },
+        { "refId": "C", "expr": "rate(mitigation_slowloris_blocked_total{job=~\"$job\"}[1m])", "legendFormat": "slowloris" },
+        { "refId": "D", "expr": "rate(mitigation_large_header_blocked_total{job=~\"$job\"}[1m])", "legendFormat": "large-header" },
+        { "refId": "E", "expr": "rate(mitigation_hash_flood_blocked_total{job=~\"$job\"}[1m])", "legendFormat": "hash-flood" },
+        { "refId": "F", "expr": "rate(mitigation_range_amp_blocked_total{job=~\"$job\"}[1m])", "legendFormat": "range-amp" },
+        { "refId": "G", "expr": "rate(mitigation_cache_poison_blocked_total{job=~\"$job\"}[1m])", "legendFormat": "cache-poison" },
+        { "refId": "H", "expr": "rate(mitigation_http2_rapid_reset_blocked_total{job=~\"$job\"}[1m])", "legendFormat": "http2-rapid-reset" },
+        { "refId": "I", "expr": "rate(mitigation_tls_renegotiation_flood_blocked_total{job=~\"$job\"}[1m])", "legendFormat": "tls-reneg" },
+        { "refId": "J", "expr": "rate(mitigation_scraping_blocked_total{job=~\"$job\"}[1m])", "legendFormat": "scraping" },
+        { "refId": "K", "expr": "rate(mitigation_credential_stuffing_blocked_total{job=~\"$job\"}[1m])", "legendFormat": "credential-stuffing" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Observe-only — matched & logged (req/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        { "refId": "A", "expr": "rate(mitigation_scraping_matched_total{job=~\"$job\"}[1m])", "legendFormat": "scraping matched" },
+        { "refId": "B", "expr": "rate(mitigation_scraping_logged_total{job=~\"$job\"}[1m])", "legendFormat": "scraping logged" },
+        { "refId": "C", "expr": "rate(mitigation_credential_stuffing_matched_total{job=~\"$job\"}[1m])", "legendFormat": "cred-stuff matched" },
+        { "refId": "D", "expr": "rate(mitigation_credential_stuffing_logged_total{job=~\"$job\"}[1m])", "legendFormat": "cred-stuff logged" },
+        { "refId": "E", "expr": "rate(mitigation_cache_poison_stripped_total{job=~\"$job\"}[1m])", "legendFormat": "cache-poison stripped" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Latence p99 par famille (s)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.0005 },
+              { "color": "red", "value": 0.001 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.99, sum by (le) (rate(mitigation_http_flood_l7_duration_seconds_bucket{job=~\"$job\"}[5m])))", "legendFormat": "http-flood-l7" },
+        { "refId": "B", "expr": "histogram_quantile(0.99, sum by (le) (rate(mitigation_large_header_duration_seconds_bucket{job=~\"$job\"}[5m])))", "legendFormat": "large-header" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(mitigation_hash_flood_duration_seconds_bucket{job=~\"$job\"}[5m])))", "legendFormat": "hash-flood" },
+        { "refId": "D", "expr": "histogram_quantile(0.99, sum by (le) (rate(mitigation_credential_stuffing_duration_seconds_bucket{job=~\"$job\"}[5m])))", "legendFormat": "credential-stuffing" }
+      ]
+    }
+  ]
+}

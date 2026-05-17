@@ -1,0 +1,35 @@
+# configs/base/rangeamp.yaml
+#
+# Mitigation range-amplification : plafonne le nombre de byte-ranges
+# déclarés dans un header Range. Défense contre CVE-2011-3192
+# ("Apache Killer") et toute variante d'amplification de réponse via
+# multipart/byteranges.
+#
+# Source de vérité pour le control plane ; tout changement passe par
+# PUT /v1/mitigations/range-amp/:id (validation TypeBox + schéma JSON).
+#
+# Schéma : configs/schemas/rangeamp.schema.json
+
+version: 1
+
+rules:
+  - id: range-amp
+    enabled: true
+    # fail-open (défaut AGENTS.md §3) : le compteur de ranges est un
+    # simple strings.Count sur un header court ; tout échec interne
+    # impliquerait un bug stdlib. Laisser passer n'expose pas
+    # directement le proxy (il ne génère pas de multipart) — seule la
+    # réponse upstream peut être amplifiée, et l'upstream a en général
+    # son propre cap (Apache >= 2.2.20, nginx <= 16 par défaut).
+    on_error: allow
+    params:
+      # Nombre maximum de byte-ranges autorisés. 8 est la valeur
+      # historique recommandée par Apache après le patch CVE-2011-3192
+      # et reste plus que suffisant pour les usages légitimes (reprise
+      # de téléchargement segmenté, streaming vidéo qui demande 1 à 4
+      # ranges par requête). Une requête à 1000 ranges signale une
+      # tentative d'amplification ou un client mal configuré.
+      max_ranges: 8
+    notes: |
+      Référence : CVE-2011-3192. Voir docs/threat-model.md#range-amplification
+      et tests/attacks/range-amplification/scenario.sh.

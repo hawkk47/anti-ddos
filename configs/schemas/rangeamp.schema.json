@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anti-ddos.local/schemas/rangeamp.schema.json",
+  "title": "range-amplification",
+  "description": "Mitigation contre l'amplification via Range header (CVE-2011-3192 / Apache Killer). Cap sur le nombre de ranges déclarés.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "rules"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version du document. Incrément monotone à chaque révision."
+    },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "on_error", "params"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["range-amp"],
+          "description": "Identifiant canonique de la mitigation."
+        },
+        "enabled": { "type": "boolean" },
+        "on_error": {
+          "type": "string",
+          "enum": ["allow", "deny"],
+          "description": "Comportement sur erreur interne. Défaut projet = allow (fail-open, AGENTS.md §3)."
+        },
+        "params": { "$ref": "#/$defs/rangeAmpParams" },
+        "notes": { "type": "string", "maxLength": 1024 },
+        "reason": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Obligatoire si enabled=false."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "enabled": { "const": false } }, "required": ["enabled"] },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    },
+    "rangeAmpParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_ranges"],
+      "properties": {
+        "max_ranges": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Nombre maximum de byte-ranges autorisés dans un header Range (RFC 9110 §14.1.1). Au-delà : HTTP 416."
+        }
+      }
+    }
+  }
+}

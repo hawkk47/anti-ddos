@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anti-ddos.local/schemas/concurrency.schema.json",
+  "title": "concurrency-cap",
+  "description": "Mitigation de load shedding / backpressure : plafond global d'in-flight requests. Quand le quota est atteint, le proxy répond 503 Service Unavailable + Retry-After=1 sans toucher à l'upstream. Filet de protection contre la saturation lorsque les rate-limits per-IP ne suffisent pas (rafales légitimes, distribution multi-IP).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "rules"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version du document. Incrément monotone à chaque révision."
+    },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "on_error", "params"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["concurrency-cap"],
+          "description": "Identifiant canonique de la mitigation."
+        },
+        "enabled": { "type": "boolean" },
+        "on_error": {
+          "type": "string",
+          "enum": ["allow", "deny"],
+          "description": "Comportement sur erreur interne. Défaut projet = allow (fail-open, AGENTS.md §3)."
+        },
+        "params": { "$ref": "#/$defs/concurrencyParams" },
+        "notes": { "type": "string", "maxLength": 1024 },
+        "reason": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Obligatoire si enabled=false."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "enabled": { "const": false } }, "required": ["enabled"] },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    },
+    "concurrencyParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_in_flight"],
+      "properties": {
+        "max_in_flight": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000,
+          "description": "Nombre maximum de requêtes simultanément in-flight à travers le proxy. Implémenté par un sémaphore (channel buffered) ; coût O(1) par acquisition. Dimensionner en fonction de la capacité upstream (ex. workers_upstream * marge_safety)."
+        }
+      }
+    }
+  }
+}

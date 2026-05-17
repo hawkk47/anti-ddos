@@ -1,0 +1,57 @@
+# configs/base/scraping.yaml
+#
+# Mitigation scraping-aggressif : détecte les bots/scrapers naïfs par
+# signature (User-Agent contenant des marqueurs connus, ou absence des
+# headers que tout navigateur grand public envoie).
+#
+# AVERTISSEMENT : signature-only. Un scraper déterminé spoofe ces
+# signaux en quelques lignes. Cette règle filtre le bruit de fond
+# (indexeurs mal configurés, script kiddies, libs HTTP par défaut),
+# pas un adversaire motivé. Pour du scraping persistant, prévoir une
+# couche comportementale séparée (non livrée).
+#
+# Cf. docs/threat-model.md#scraping-aggressif.
+#
+# Source de vérité pour le control plane ; tout changement passe par
+# PUT /v1/mitigations/scraping/:id (validation TypeBox + schéma JSON).
+#
+# Schéma : configs/schemas/scraping.schema.json
+
+version: 1
+
+rules:
+  - id: scraping
+    enabled: true
+    # 'log' = défaut : laisse passer, incrémente mitigation_scraping_logged_total.
+    # Permet d'observer le bruit de fond avant d'activer un blocage.
+    # 'deny' = opt-in : refuse 403 dès qu'un signal matche.
+    action: log
+    params:
+      # Substrings recherchées dans le User-Agent (case-insensitive).
+      # Liste volontairement courte : les UA explicitement bots ou
+      # libs HTTP brutes. Pas de "Mozilla", "Apple" ou autres tokens
+      # ambigus qui matcheraient des navigateurs légitimes.
+      user_agent_deny:
+        - python-requests
+        - python-urllib
+        - go-http-client
+        - scrapy
+        - curl/
+        - wget/
+        - libwww-perl
+        - java/
+        - okhttp/
+        - phantomjs
+        - headlesschrome
+        - selenium
+        - puppeteer
+        - playwright
+        - bot
+        - crawler
+        - spider
+        - scraper
+      # Active false par défaut : certains clients API légitimes ne
+      # mettent pas Accept-Language. À activer site-par-site selon la
+      # population de clients attendue.
+      require_accept_language: false
+      require_accept_encoding: false

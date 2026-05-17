@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anti-ddos.local/schemas/headers.schema.json",
+  "title": "headers",
+  "description": "Mitigations sur le contenu des headers HTTP (large-header).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "rules"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version du document. Incrément monotone à chaque révision."
+    },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "on_error", "params"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["large-header"],
+          "description": "Identifiant canonique de la mitigation."
+        },
+        "enabled": { "type": "boolean" },
+        "on_error": {
+          "type": "string",
+          "enum": ["allow", "deny"],
+          "description": "Comportement sur erreur interne. Défaut projet = allow (fail-open, AGENTS.md §3)."
+        },
+        "params": { "$ref": "#/$defs/largeHeaderParams" },
+        "notes": { "type": "string", "maxLength": 1024 },
+        "reason": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Obligatoire si enabled=false."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "enabled": { "const": false } }, "required": ["enabled"] },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    },
+    "largeHeaderParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_header_count", "max_value_bytes"],
+      "properties": {
+        "max_header_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "description": "Nombre maximal de headers distincts par requête. Au-delà : HTTP 431."
+        },
+        "max_value_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216,
+          "description": "Taille maximale (octets) d'une valeur de header. Au-delà : HTTP 431."
+        }
+      }
+    }
+  }
+}

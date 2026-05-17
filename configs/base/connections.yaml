@@ -1,0 +1,31 @@
+# configs/base/connections.yaml
+#
+# Mitigations au niveau connexion. Source de vérité pour le control
+# plane ; tout changement passe par POST /v1/mitigations/connections
+# (validation TypeBox + schéma JSON). configs/prod/* ne doit JAMAIS
+# référencer un id absent d'ici.
+#
+# Schéma : configs/schemas/connections.schema.json
+
+version: 1
+
+rules:
+  - id: slowloris
+    enabled: true
+    # fail-open : si la mitigation tombe en erreur interne, on laisse
+    # passer. Documenté par défaut dans le data plane.
+    on_error: allow
+    params:
+      # Plafond conservateur. À tuner par environnement via
+      # configs/prod/connections.yaml (jamais en dur dans le code).
+      # Un client légitime derrière NAT peut ouvrir ~6-10 connexions
+      # vers un même origin (pré-HTTP/2). 64 = marge confortable.
+      max_conns_per_ip: 64
+    notes: |
+      Mitigation: voir docs/threat-model.md#slowloris
+      Reproducer: proxy/mitigations/slowloris/slowloris_test.go
+      Métriques exposées (préfixe mitigation_slowloris_) :
+        - evaluated_total
+        - blocked_total
+        - errors_total
+        - duration_seconds (histogramme)

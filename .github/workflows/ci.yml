@@ -1,0 +1,230 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Annule les runs en cours si on push à nouveau sur la même branche.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: '1.22'
+  NODE_VERSION: '20'
+
+jobs:
+  # ------------------------------------------------------------
+  # Data plane (Go) — pure-Go, CGO_ENABLED=0, Win + Linux.
+  # ------------------------------------------------------------
+  proxy:
+    name: proxy (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: proxy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if proxy/ absent
+        id: check
+        shell: bash
+        working-directory: .
+        run: |
+          if [ ! -d proxy ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::proxy/ absent — étape ignorée"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.check.outputs.skip == 'false'
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false  # active quand proxy/go.sum existera
+
+      - if: steps.check.outputs.skip == 'false'
+        name: go vet
+        env:
+          CGO_ENABLED: '0'
+        run: go vet ./...
+
+      - if: steps.check.outputs.skip == 'false'
+        name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.59
+          working-directory: proxy
+
+      # Tests : on active CGO uniquement pour le race detector.
+      # Cf. https://go.dev/doc/articles/race_detector — -race exige cgo.
+      # Le binaire de prod reste build avec CGO_ENABLED=0 (étape suivante).
+      - if: steps.check.outputs.skip == 'false'
+        name: go test (race)
+        env:
+          CGO_ENABLED: '1'
+        run: go test -race -count=1 ./...
+
+      - if: steps.check.outputs.skip == 'false'
+        name: go build (pure-Go, CGO_ENABLED=0)
+        env:
+          CGO_ENABLED: '0'
+        run: go build ./...
+
+  # ------------------------------------------------------------
+  # Control plane (Node.js + TS) — Fastify, pnpm, Win + Linux.
+  # ------------------------------------------------------------
+  control:
+    name: control (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: control
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if control/ absent
+        id: check
+        shell: bash
+        working-directory: .
+        run: |
+          if [ ! -d control ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::control/ absent — étape ignorée"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.check.outputs.skip == 'false'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - if: steps.check.outputs.skip == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: control/pnpm-lock.yaml
+
+      - if: steps.check.outputs.skip == 'false'
+        run: pnpm install --frozen-lockfile
+
+      - if: steps.check.outputs.skip == 'false'
+        run: pnpm lint
+
+      - if: steps.check.outputs.skip == 'false'
+        run: pnpm test
+
+      - if: steps.check.outputs.skip == 'false'
+        run: pnpm build
+
+  # ------------------------------------------------------------
+  # Scripts shell — ShellCheck (Linux uniquement, l'outil n'est
+  # pas natif Windows mais les scripts ciblent les deux OS).
+  # ------------------------------------------------------------
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if no shell scripts
+        id: check
+        run: |
+          if compgen -G "scripts/**/*.sh" >/dev/null || \
+             compgen -G ".github/hooks/scripts/*.sh" >/dev/null || \
+             compgen -G "tests/**/*.sh" >/dev/null; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.check.outputs.skip == 'false'
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          severity: warning
+          scandir: '.'
+          additional_files: 'scripts/**/*.sh tests/**/*.sh .github/hooks/scripts/*.sh'
+
+  # ------------------------------------------------------------
+  # Scripts PowerShell — PSScriptAnalyzer (Windows + Linux,
+  # garantit que les .ps1 ne dérivent pas par rapport aux .sh).
+  # ------------------------------------------------------------
+  pwsh-lint:
+    name: PSScriptAnalyzer (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if no .ps1 files
+        id: check
+        shell: bash
+        run: |
+          if compgen -G "scripts/**/*.ps1" >/dev/null || \
+             compgen -G ".github/hooks/scripts/*.ps1" >/dev/null || \
+             compgen -G "tests/**/*.ps1" >/dev/null; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.check.outputs.skip == 'false'
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+          $issues = Invoke-ScriptAnalyzer -Path . -Recurse -Severity @('Error','Warning')
+          if ($issues) {
+            $issues | Format-Table -AutoSize
+            exit 1
+          }
+
+  # ------------------------------------------------------------
+  # Tests d'intégration cross-langages — Bash sur Linux,
+  # PowerShell sur Windows. Les deux scripts doivent exister.
+  # ------------------------------------------------------------
+  integration:
+    name: integration (${{ matrix.os }})
+    needs: [proxy, control]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if no integration runner
+        id: check
+        shell: bash
+        run: |
+          if [ -f tests/run-integration.sh ] || [ -f tests/run-integration.ps1 ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.check.outputs.skip == 'false' && runner.os == 'Linux'
+        run: bash tests/run-integration.sh
+
+      - if: steps.check.outputs.skip == 'false' && runner.os == 'Windows'
+        shell: pwsh
+        run: ./tests/run-integration.ps1

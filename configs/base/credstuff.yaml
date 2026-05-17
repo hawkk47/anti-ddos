@@ -1,0 +1,46 @@
+# configs/base/credstuff.yaml
+#
+# Mitigation credential-stuffing : rate-limit strict par IP, scopé aux
+# endpoints d'authentification configurés (préfixes de path + méthodes).
+#
+# AVERTISSEMENT : ce module bloque les attaquants depuis peu d'IPs.
+# Contre du credential stuffing **distribué** (botnet, proxies
+# résidentiels rotatifs), un seuil per-IP ne suffit pas — il faut une
+# couche comportementale séparée (CAPTCHA, MFA, fingerprint, contrôles
+# applicatifs sur le compte cible).
+#
+# Cf. docs/threat-model.md#credential-stuffing.
+#
+# Source de vérité pour le control plane ; tout changement passe par
+# PUT /v1/mitigations/credential-stuffing/:id.
+#
+# Schéma : configs/schemas/credstuff.schema.json
+
+version: 1
+
+rules:
+  - id: credential-stuffing
+    enabled: true
+    # 'deny' par défaut : credential stuffing est une attaque ciblée,
+    # on bloque dès le seuil dépassé. 'log' réservé à l'observation
+    # avant activation.
+    action: deny
+    params:
+      # Préfixes de path scopant la mitigation. Case-sensitive comme
+      # toutes les URLs HTTP. Adapter à l'app cible.
+      login_paths:
+        - /login
+        - /api/auth/
+        - /api/v1/login
+        - /signin
+      # Méthodes filtrées. Les pages de login HTML émettent un POST ;
+      # les API REST utilisent POST aussi. GET sur /login charge le
+      # formulaire — hors scope.
+      methods:
+        - POST
+      # 10 tentatives/minute/IP : seuil large pour un humain (un
+      # utilisateur en panique tape rarement plus de 5 fois), trop bas
+      # pour du stuffing sérieux (>1000 essais/h pour être rentable).
+      # À ajuster selon le profil utilisateurs (apps grand public vs
+      # B2B avec NAT partagé).
+      max_attempts_per_minute: 10

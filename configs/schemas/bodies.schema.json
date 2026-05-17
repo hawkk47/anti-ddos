@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anti-ddos.local/schemas/bodies.schema.json",
+  "title": "bodies",
+  "description": "Mitigations sur le corps des requêtes HTTP (slow-post).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "rules"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version du document. Incrément monotone à chaque révision."
+    },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "on_error", "params"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["slow-post"],
+          "description": "Identifiant canonique de la mitigation."
+        },
+        "enabled": { "type": "boolean" },
+        "on_error": {
+          "type": "string",
+          "enum": ["allow", "deny"],
+          "description": "Comportement sur erreur interne. Défaut projet = allow (fail-open, AGENTS.md §3)."
+        },
+        "params": { "$ref": "#/$defs/slowPostParams" },
+        "notes": { "type": "string", "maxLength": 1024 },
+        "reason": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Obligatoire si enabled=false."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "enabled": { "const": false } }, "required": ["enabled"] },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    },
+    "slowPostParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_body_bytes", "min_bytes_per_second", "grace_period_ms"],
+      "properties": {
+        "max_body_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1073741824,
+          "description": "Taille maximale (octets) du body accepté. Cap dur via http.MaxBytesReader."
+        },
+        "min_bytes_per_second": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576,
+          "description": "Débit minimum exigé après la période de grâce. Sous le seuil : connexion coupée."
+        },
+        "grace_period_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000,
+          "description": "Tolérance initiale (ms) avant d'évaluer le débit. Couvre TCP slow-start / TLS handshake."
+        }
+      }
+    }
+  }
+}

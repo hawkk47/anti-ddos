@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anti-ddos.local/schemas/http2.schema.json",
+  "title": "http2",
+  "description": "Mitigations HTTP/2 (rapid reset, CVE-2023-44487).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "rules"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version du document. Incrément monotone à chaque révision."
+    },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "on_error", "params"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["http2-rapid-reset"],
+          "description": "Identifiant canonique de la mitigation."
+        },
+        "enabled": { "type": "boolean" },
+        "on_error": {
+          "type": "string",
+          "enum": ["allow", "deny"],
+          "description": "Comportement sur erreur interne. Défaut projet = allow (fail-open, AGENTS.md §3)."
+        },
+        "params": { "$ref": "#/$defs/http2Params" },
+        "notes": { "type": "string", "maxLength": 1024 },
+        "reason": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Obligatoire si enabled=false."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "enabled": { "const": false } }, "required": ["enabled"] },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    },
+    "http2Params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_resets_per_conn", "window_ms", "max_concurrent_streams"],
+      "properties": {
+        "max_resets_per_conn": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000,
+          "description": "Nombre maximum d'annulations précoces de stream (RST_STREAM avant réponse) tolérées par connexion sur la fenêtre."
+        },
+        "window_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300000,
+          "description": "Fenêtre glissante en millisecondes (max 5 minutes) pour le compteur par connexion."
+        },
+        "max_concurrent_streams": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000,
+          "description": "SETTINGS_MAX_CONCURRENT_STREAMS annoncé au peer HTTP/2 (deuxième ligne de défense)."
+        }
+      }
+    }
+  }
+}

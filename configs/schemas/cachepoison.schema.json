@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anti-ddos.local/schemas/cachepoison.schema.json",
+  "title": "cache-poisoning",
+  "description": "Mitigation contre les requêtes injectant des headers 'unkeyed' qui peuvent empoisonner un cache aval (CDN, reverse-cache). Cf. J. Kettle, 'Practical Web Cache Poisoning', Black Hat USA 2018.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "rules"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version du document. Incrément monotone à chaque révision."
+    },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "action", "params"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["cache-poison"],
+          "description": "Identifiant canonique de la mitigation."
+        },
+        "enabled": { "type": "boolean" },
+        "action": {
+          "type": "string",
+          "enum": ["strip", "deny"],
+          "description": "Sur header dangereux détecté : 'strip' retire silencieusement (défaut), 'deny' rejette en HTTP 400."
+        },
+        "params": { "$ref": "#/$defs/cachePoisonParams" },
+        "notes": { "type": "string", "maxLength": 1024 },
+        "reason": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Obligatoire si enabled=false."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "enabled": { "const": false } }, "required": ["enabled"] },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    },
+    "cachePoisonParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["headers"],
+      "properties": {
+        "headers": {
+          "type": "array",
+          "description": "Liste des request-headers à retirer/rejeter. Comparaison insensible à la casse. Ne JAMAIS inclure X-Forwarded-For / X-Forwarded-Proto / X-Real-IP (AGENTS.md §6).",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9!#$%&'*+\\-.^_`|~]+$"
+          }
+        }
+      }
+    }
+  }
+}

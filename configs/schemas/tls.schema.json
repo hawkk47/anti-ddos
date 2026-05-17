@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anti-ddos.local/schemas/tls.schema.json",
+  "title": "tls",
+  "description": "Mitigations TLS (handshake flood, renégociation).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "rules"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version du document. Incrément monotone à chaque révision."
+    },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "on_error", "params"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["tls-renegotiation-flood"],
+          "description": "Identifiant canonique de la mitigation."
+        },
+        "enabled": { "type": "boolean" },
+        "on_error": {
+          "type": "string",
+          "enum": ["allow", "deny"],
+          "description": "Comportement sur erreur interne. Défaut projet = allow (fail-open, AGENTS.md §3)."
+        },
+        "params": { "$ref": "#/$defs/tlsParams" },
+        "notes": { "type": "string", "maxLength": 1024 },
+        "reason": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Obligatoire si enabled=false."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "enabled": { "const": false } }, "required": ["enabled"] },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    },
+    "tlsParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_tls_version", "handshakes_per_second_per_ip", "burst"],
+      "properties": {
+        "min_tls_version": {
+          "type": "string",
+          "enum": ["1.2", "1.3"],
+          "description": "Version TLS minimale acceptée. La renégociation est toujours refusée (tls.RenegotiateNever)."
+        },
+        "handshakes_per_second_per_ip": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "description": "Taux maximal de nouveaux handshakes acceptés par IP source (token bucket)."
+        },
+        "burst": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000,
+          "description": "Capacité du bucket : nombre de handshakes simultanés tolérés avant rate-limit."
+        }
+      }
+    }
+  }
+}

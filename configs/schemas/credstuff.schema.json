@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anti-ddos.local/schemas/credstuff.schema.json",
+  "title": "credential-stuffing",
+  "description": "Mitigation contre le credential stuffing : rate-limit strict par IP, scopé aux endpoints d'authentification configurés (préfixes de path + méthodes optionnelles). AVERTISSEMENT : un attaquant distribué (botnet / proxies résidentiels) contourne un seuil per-IP — combiner avec une couche comportementale (CAPTCHA, MFA, contrôles applicatifs côté compte cible).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "rules"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version du document. Incrément monotone à chaque révision."
+    },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "action", "params"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["credential-stuffing"],
+          "description": "Identifiant canonique de la mitigation."
+        },
+        "enabled": { "type": "boolean" },
+        "action": {
+          "type": "string",
+          "enum": ["log", "deny"],
+          "description": "Sur quota dépassé : 'log' laisse passer + incrémente le compteur, 'deny' (défaut) répond HTTP 429 + Retry-After."
+        },
+        "params": { "$ref": "#/$defs/credStuffParams" },
+        "notes": { "type": "string", "maxLength": 1024 },
+        "reason": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Obligatoire si enabled=false."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "enabled": { "const": false } }, "required": ["enabled"] },
+          "then": { "required": ["reason"] }
+        },
+        {
+          "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+          "then": {
+            "properties": {
+              "params": {
+                "required": ["login_paths", "max_attempts_per_minute"],
+                "properties": {
+                  "login_paths": { "minItems": 1 },
+                  "max_attempts_per_minute": { "minimum": 1 }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "credStuffParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "login_paths": {
+          "type": "array",
+          "description": "Préfixes de path (case-sensitive, commencent par '/') scopant la mitigation. Une requête dont le path ne commence par AUCUN de ces préfixes est ignorée. Pas de regex (anti-ReDoS).",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^/"
+          }
+        },
+        "methods": {
+          "type": "array",
+          "description": "Méthodes HTTP filtrées (uppercase). Vide ou absent = toutes méthodes. Défaut conseillé : ['POST'].",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16
+          }
+        },
+        "max_attempts_per_minute": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "description": "Nombre maximum de tentatives autorisées par IP sur les login paths, par fenêtre d'une minute (token bucket : rps=N/60, burst=N)."
+        },
+        "blocklist_enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Active la consultation de la blocklist d'IP poussée par le control plane (ADR 0004). Si false (défaut), seul le rate-limit per-IP s'applique. Les entrées de la blocklist sont gérées via PUT /_admin/v1/blocklist/credstuff sur le data plane."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,43 @@
+# configs/base/http2.yaml
+#
+# Mitigation HTTP/2 rapid reset (CVE-2023-44487). Source de vérité
+# pour le control plane ; tout changement passe par
+# PUT /v1/mitigations/http2/:id (validation TypeBox + schéma JSON).
+#
+# Schéma : configs/schemas/http2.schema.json
+
+version: 1
+
+rules:
+  - id: http2-rapid-reset
+    enabled: true
+    # fail-open (défaut AGENTS.md §3) : sur erreur interne du compteur
+    # par connexion, on laisse passer plutôt que couper le trafic
+    # légitime. Le protocole HTTP/2 lui-même reste bridé par
+    # max_concurrent_streams en seconde ligne de défense.
+    on_error: allow
+    params:
+      # Nombre d'annulations précoces de stream tolérées sur une
+      # même connexion TCP dans la fenêtre. Un client légitime qui
+      # navigue rapidement peut générer quelques RST_STREAM (clics
+      # successifs) ; 100 reste très large pour de l'usage normal et
+      # bien en dessous d'un volume d'attaque (10k+/s).
+      max_resets_per_conn: 100
+      # Fenêtre glissante de comptage. 10 s : assez court pour qu'une
+      # rafale d'attaque sature vite le compteur ; assez long pour
+      # qu'une navigation humaine soit comptée sur plusieurs requêtes.
+      window_ms: 10000
+      # SETTINGS_MAX_CONCURRENT_STREAMS annoncé au peer. RFC 9113
+      # recommande ≥ 100. Valeur basse = baisse l'amplification
+      # possible par connexion (le client ne peut pas tenir plus de
+      # 100 streams en parallèle sur la même TCP).
+      max_concurrent_streams: 100
+    notes: |
+      La protection se compose de deux couches :
+        1. http2.Server.MaxConcurrentStreams : limite annoncée au peer
+           via SETTINGS, plafonne le parallélisme par connexion.
+        2. Middleware Go : observe les requêtes terminées par
+           context.Canceled SANS aucune écriture par le handler (signature
+           d'un RST_STREAM avant réponse) et ferme la connexion TCP
+           après dépassement de max_resets_per_conn dans la fenêtre.
+      Référence : https://nvd.nist.gov/vuln/detail/CVE-2023-44487

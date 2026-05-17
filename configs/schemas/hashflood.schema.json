@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anti-ddos.local/schemas/hashflood.schema.json",
+  "title": "hash-flood",
+  "description": "Mitigations contre les attaques de type hash-flood / parameter-flood (cap sur le nombre de paramètres distincts dans la query string).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "rules"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version du document. Incrément monotone à chaque révision."
+    },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "on_error", "params"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["hash-flood"],
+          "description": "Identifiant canonique de la mitigation."
+        },
+        "enabled": { "type": "boolean" },
+        "on_error": {
+          "type": "string",
+          "enum": ["allow", "deny"],
+          "description": "Comportement sur erreur interne. Défaut projet = allow (fail-open, AGENTS.md §3)."
+        },
+        "params": { "$ref": "#/$defs/hashFloodParams" },
+        "notes": { "type": "string", "maxLength": 1024 },
+        "reason": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Obligatoire si enabled=false."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "enabled": { "const": false } }, "required": ["enabled"] },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    },
+    "hashFloodParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_query_params"],
+      "properties": {
+        "max_query_params": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "description": "Nombre maximum de paramètres distincts dans la query string. Comptés par strings.Count(rawQuery, '&')+1 sans parse complet, donc gratuit en CPU."
+        }
+      }
+    }
+  }
+}

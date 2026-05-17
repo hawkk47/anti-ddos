@@ -1,0 +1,38 @@
+# configs/base/concurrency.yaml
+#
+# Mitigation concurrency-cap : plafond GLOBAL d'in-flight requests
+# (load shedding / backpressure). Différent du flood per-IP : protège
+# contre la saturation upstream lorsque le trafic légitime explose ou
+# qu'une attaque est distribuée sur trop d'IP pour que le flood per-IP
+# coupe. Réponse : 503 + Retry-After=1, sans toucher à l'upstream.
+#
+# Schéma : configs/schemas/concurrency.schema.json
+# Threat model : docs/threat-model.md#concurrency-saturation
+
+version: 1
+
+rules:
+  - id: concurrency-cap
+    # Désactivé par défaut : la valeur de max_in_flight DOIT être
+    # dimensionnée pour la cible de déploiement (capacité upstream
+    # × marge). Un mauvais seuil sheds du trafic légitime.
+    enabled: false
+    reason: |
+      max_in_flight doit être calibré pour l'upstream cible avant
+      activation en prod. Voir docs/runbooks/concurrency-cap.md.
+    # fail-open (défaut AGENTS.md §3) : si l'init ou l'évaluation
+    # échoue, on laisse passer plutôt que de fermer la porte. Un cap
+    # cassé qui rejette tout est pire que pas de cap (DoS auto-infligé).
+    on_error: allow
+    params:
+      # Plafond global d'in-flight. 1024 est une valeur indicative ;
+      # ajuster en fonction de :
+      #   - workers/connexions max côté upstream
+      #   - marge de sécurité (typique : 80% de la capa upstream)
+      #   - latence p99 attendue (in-flight = RPS × latence)
+      max_in_flight: 1024
+    notes: |
+      Dernier filet anti-saturation dans la chaîne (après scraping,
+      cache-poison, hash-flood, range-amp, large-header, http-flood-L7).
+      Inactif tant que rate-limits per-IP suffisent ; déclenche sur
+      flash-crowd ou attaque distribuée multi-IP.

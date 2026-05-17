@@ -1,0 +1,27 @@
+# configs/base/hashflood.yaml
+#
+# Mitigation hash-flood : plafonne le nombre de paramètres distincts
+# dans la query string pour borner le coût de parsing par requête.
+# Source de vérité pour le control plane ; tout changement passe par
+# PUT /v1/mitigations/hash-flood/:id (validation TypeBox + schéma JSON).
+#
+# Schéma : configs/schemas/hashflood.schema.json
+
+version: 1
+
+rules:
+  - id: hash-flood
+    enabled: true
+    # fail-open (défaut AGENTS.md §3) : la map native Go étant immunisée
+    # contre les collisions algorithmiques (seed randomisée + hasher
+    # non inversible), l'attaque résiduelle est purement quantitative.
+    # Sur erreur interne du compteur, laisser passer ne ré-expose pas
+    # le service à du O(n²) — au pire à du O(n) qu'on aurait toléré.
+    on_error: allow
+    params:
+      # Nombre maximum de paramètres dans la query string. 64 couvre
+      # largement les usages légitimes (formulaires, filtres complexes,
+      # checkout multi-articles avec quelques dizaines d'items) tout
+      # en restant largement sous le seuil où le parsing devient
+      # mesurable (~milliers de params/requête).
+      max_query_params: 64

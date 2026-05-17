@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anti-ddos.local/schemas/ratelimit.schema.json",
+  "title": "ratelimit",
+  "description": "Mitigations applicables au niveau requête HTTP (rate-limit L7).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "rules"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version du document. Incrément monotone à chaque révision."
+    },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "on_error", "params"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["http-flood-l7"],
+          "description": "Identifiant canonique de la mitigation."
+        },
+        "enabled": { "type": "boolean" },
+        "on_error": {
+          "type": "string",
+          "enum": ["allow", "deny"],
+          "description": "Comportement sur erreur interne (fail-open vs fail-closed). Défaut projet pour cette famille = deny (ADR 0003)."
+        },
+        "params": { "$ref": "#/$defs/httpFloodParams" },
+        "notes": { "type": "string", "maxLength": 1024 },
+        "reason": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Obligatoire si enabled=false."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "enabled": { "const": false } }, "required": ["enabled"] },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    },
+    "httpFloodParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requests_per_second", "burst"],
+      "properties": {
+        "requests_per_second": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "description": "Cadence soutenue autorisée par IP (token bucket refill rate)."
+        },
+        "burst": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000,
+          "description": "Rafale instantanée tolérée par IP (capacité du bucket)."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=../schemas/tls-fingerprint.schema.json
+#
+# Mitigation TLS fingerprinting JA3 + JA4 (cf. docs/threat-model.md
+# #ja3-ja4-fingerprint, configs/schemas/tls-fingerprint.schema.json).
+#
+# Mode par défaut : DORMANT.
+#   - enabled=false car la mitigation ne sert à rien tant que le proxy
+#     n'a pas de terminaison TLS branchée (mode h2c actuel). Le calcul
+#     JA3/JA4 nécessite un *tls.ClientHelloInfo, fourni uniquement par
+#     tls.Config.GetConfigForClient au handshake.
+#   - Même une fois TLS branché, activer cette mitigation requiert une
+#     blocklist curée : utls, curl-impersonate et certains builds Chrome
+#     peuvent émettre des empreintes confondues avec du trafic légitime.
+#     Auditer chaque hash avant de l'ajouter.
+#
+# on_error=allow : fail-open. Une erreur de parsing du ClientHello ne
+# doit jamais empêcher un client légitime de négocier.
+#
+# Limites connues :
+#   - JA3 est obsolète depuis TLS 1.3 + ECH ; à terme privilégier JA4.
+#   - Aucune protection contre des attaquants qui rotent leur fingerprint
+#     (utls + randomisation). Couche complémentaire — pas de défense
+#     unique.
+version: 1
+rules:
+  - id: tls-fingerprint
+    enabled: false
+    reason: "Dormant tant que le proxy ne termine pas TLS et qu'aucune blocklist curée n'est fournie."
+    on_error: allow
+    params:
+      blocked_ja3: []
+      blocked_ja4: []
+    notes: |
+      Références :
+        - JA3 : Salesforce, https://github.com/salesforce/ja3 (2017)
+        - JA4 : FoxIO, https://github.com/FoxIO-LLC/ja4 (2023)
+        - GREASE : RFC 8701 (valeurs 0x0A0A..0xFAFA filtrées)
+      Activation type :
+        ANTIDDOS_TLS_FINGERPRINT_ENABLED=true
+        ANTIDDOS_TLS_FINGERPRINT_BLOCKED_JA3=<hash1>,<hash2>
+        ANTIDDOS_TLS_FINGERPRINT_BLOCKED_JA4=<chaîne1>,<chaîne2>
+        ANTIDDOS_TLS_FINGERPRINT_ON_ERROR=allow

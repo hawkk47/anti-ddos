@@ -1,0 +1,36 @@
+# configs/base/ratelimit.yaml
+#
+# Mitigations rate-limit HTTP L7. Source de vérité pour le control
+# plane ; tout changement passe par PUT /v1/mitigations/ratelimit/:id
+# (validation TypeBox + schéma JSON).
+#
+# Schéma : configs/schemas/ratelimit.schema.json
+# ADR    : docs/adr/0003-http-flood-l7-fail-closed.md
+
+version: 1
+
+rules:
+  - id: http-flood-l7
+    enabled: true
+    # fail-closed : si la mitigation ne peut pas identifier l'IP
+    # source (RemoteAddr non parsable), la requête est refusée avec
+    # 503. Cf. ADR 0003. Surcharger en "allow" demande une ADR
+    # complémentaire ou un changement temporaire d'incident.
+    on_error: deny
+    params:
+      # Capacité soutenue : 50 req/s/IP. Pour comparaison, un
+      # navigateur ouvre 6 connexions HTTP/1.1 et émet rarement plus
+      # de quelques requêtes/s par connexion. 50 = marge confortable
+      # pour API + assets statiques sur une même IP NAT.
+      requests_per_second: 50
+      # Rafale tolérée : 100. Couvre le fan-out initial de chargement
+      # de page (typique 30-80 sous-requêtes simultanées).
+      burst: 100
+    notes: |
+      Mitigation: voir docs/threat-model.md#http-flood-l7
+      Reproducer: proxy/mitigations/httpflood/httpflood_test.go (TestReproducer_*)
+      Métriques exposées (préfixe mitigation_http_flood_l7_) :
+        - evaluated_total
+        - blocked_total
+        - errors_total
+        - duration_seconds (histogramme)

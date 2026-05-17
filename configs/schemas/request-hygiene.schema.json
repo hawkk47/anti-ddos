@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anti-ddos.local/schemas/request-hygiene.schema.json",
+  "title": "request-hygiene",
+  "description": "Mitigation d'hygiène HTTP appliquée en tête de chaîne : méthode whitelist, URI bornée, conflits Transfer-Encoding / Content-Length anti-smuggling (CVE-class HTTP request smuggling). Rejets en 400 Bad Request sans header de raison côté client (log côté serveur uniquement).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "rules"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version du document. Incrément monotone à chaque révision."
+    },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "on_error", "params"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["request-hygiene"],
+          "description": "Identifiant canonique de la mitigation."
+        },
+        "enabled": { "type": "boolean" },
+        "on_error": {
+          "type": "string",
+          "enum": ["allow", "deny"],
+          "description": "Comportement sur erreur interne. Pour cette mitigation, la décision est strictement déterministe ; défaut projet = deny car une violation d'hygiène indique une intention malveillante."
+        },
+        "params": { "$ref": "#/$defs/hygieneParams" },
+        "notes": { "type": "string", "maxLength": 1024 },
+        "reason": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Obligatoire si enabled=false."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "enabled": { "const": false } }, "required": ["enabled"] },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    },
+    "hygieneParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowed_methods",
+        "max_uri_length",
+        "reject_te_cl_conflict",
+        "reject_duplicate_content_length",
+        "reject_invalid_transfer_encoding",
+        "reject_empty_host"
+      ],
+      "properties": {
+        "allowed_methods": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]+$",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "uniqueItems": true,
+          "description": "Whitelist de méthodes HTTP. Vide = pas de check méthode. Doivent être upper-case. CONNECT et TRACE sont volontairement omis du défaut."
+        },
+        "max_uri_length": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1048576,
+          "description": "Longueur maximale du RequestURI brut (octets). 0 = pas de check. Plafond sanity = 1 MiB."
+        },
+        "reject_te_cl_conflict": {
+          "type": "boolean",
+          "description": "Rejet si Transfer-Encoding ET Content-Length sont tous deux présents (vecteur HTTP request smuggling CL.TE / TE.CL, James Kettle 2019)."
+        },
+        "reject_duplicate_content_length": {
+          "type": "boolean",
+          "description": "Rejet si Content-Length apparaît plusieurs fois avec des valeurs distinctes (autre vecteur smuggling)."
+        },
+        "reject_invalid_transfer_encoding": {
+          "type": "boolean",
+          "description": "Rejet si Transfer-Encoding contient autre chose que 'chunked' (RFC 7230 §3.3.1 ; identity déprécié)."
+        },
+        "reject_empty_host": {
+          "type": "boolean",
+          "description": "Rejet si l'en-tête Host est vide ou whitespace seul (HTTP/1.1 §5.4 — Host obligatoire)."
+        }
+      }
+    }
+  }
+}

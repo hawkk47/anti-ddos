@@ -1,0 +1,55 @@
+# configs/base/request-hygiene.yaml
+#
+# Mitigation request-hygiene : politique d'hygiène HTTP appliquée en
+# TÊTE de chaîne. Méthode whitelist, URI bornée, framing strict
+# (anti-smuggling CL.TE/TE.CL), Host non vide. Toute violation = 400
+# Bad Request, sans header de raison côté client (log côté serveur).
+#
+# Schéma : configs/schemas/request-hygiene.schema.json
+# Threat model : docs/threat-model.md#request-hygiene
+
+version: 1
+
+rules:
+  - id: request-hygiene
+    # Activée par défaut sur la base de défauts conservateurs : les
+    # checks rejettent uniquement des requêtes manifestement hostiles
+    # ou non-conformes RFC. Risque de faux positif très faible.
+    enabled: true
+    # fail-deny : sur erreur interne de la mitigation, on rejette.
+    # Cohérent avec l'intent : une requête qui déclenche une erreur
+    # dans le parser d'hygiène est sans doute elle-même malformée.
+    on_error: deny
+    params:
+      # Whitelist conservatrice — RFC 7231 §4 sans CONNECT/TRACE.
+      #   * CONNECT n'a de sens que pour un proxy explicite (non notre cas).
+      #   * TRACE = vecteur XST historique (CVE-2003-1567 family).
+      # Si un endpoint applicatif nécessite WebDAV (PROPFIND, etc.),
+      # ajouter ici en upper-case.
+      allowed_methods:
+        - GET
+        - HEAD
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+
+      # 8 KiB couvre largement les URIs applicatives normales (REST,
+      # query strings raisonnables). Au-delà = signal d'attaque ou
+      # bug client. Plafond sanity du schéma = 1 MiB.
+      max_uri_length: 8192
+
+      # Anti-smuggling. Ces trois flags sont la valeur principale de
+      # la mitigation. Cf. James Kettle, "HTTP Desync Attacks" (BH 2019).
+      reject_te_cl_conflict: true
+      reject_duplicate_content_length: true
+      reject_invalid_transfer_encoding: true
+
+      # Host vide = HTTP/1.1 invalide (RFC 7230 §5.4) ; refuser.
+      reject_empty_host: true
+    notes: |
+      Premier middleware de la chaîne (avant scraping, rate-limits,
+      etc.) : une requête sale ne consomme pas de token ni de cycle
+      de parsing aval. Réponse 400 sans header de raison pour éviter
+      d'informer l'attaquant du motif exact (defense in depth).

@@ -1,0 +1,36 @@
+# configs/base/headers.yaml
+#
+# Mitigations sur le contenu des headers HTTP. Source de vérité pour le
+# control plane ; tout changement passe par PUT /v1/mitigations/headers/:id
+# (validation TypeBox + schéma JSON).
+#
+# Schéma : configs/schemas/headers.schema.json
+
+version: 1
+
+rules:
+  - id: large-header
+    enabled: true
+    # fail-open (défaut AGENTS.md §3) : si la mitigation tombe en
+    # erreur, on laisse passer plutôt que de bloquer du trafic
+    # légitime. Pas d'ADR contraire pour cette famille.
+    on_error: allow
+    params:
+      # Nombre maximal de headers distincts par requête.
+      # 100 = très large pour un navigateur normal (~30) tout en
+      # restant strict face à un client malveillant qui en pousserait
+      # plusieurs milliers.
+      max_header_count: 100
+      # Taille maximale d'UNE valeur de header (octets). 8 KiB couvre
+      # les cookies de session standard et les JWT modestes. Cap
+      # global stdlib (MaxHeaderBytes) reste actif au-dessus.
+      max_value_bytes: 8192
+    notes: |
+      Mitigation: voir docs/threat-model.md#large-header
+      Reproducer: proxy/mitigations/largeheader/largeheader_test.go (TestReproducer_*)
+      Métriques exposées (préfixe mitigation_large_header_) :
+        - evaluated_total
+        - blocked_total
+        - errors_total
+        - duration_seconds (histogramme)
+      Note : complémentaire à `Server.MaxHeaderBytes` stdlib (cap global, défaut 16 KiB).

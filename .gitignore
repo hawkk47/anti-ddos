@@ -1,0 +1,87 @@
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Editors ---
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+.idea/
+*.swp
+*.swo
+
+# --- Secrets & local config (NEVER commit) ---
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.env
+.env.*
+!.env.example
+secrets.*
+*.secret.*
+
+# --- Go ---
+# Binaries (tout fichier sans extension n'est pas filtrable, on liste les conventions courantes)
+proxy/bin/
+proxy/dist/
+*.exe
+*.test
+*.out
+coverage.out
+coverage.html
+# Module download cache local (si jamais)
+go.work
+go.work.sum
+
+# --- Node / TypeScript ---
+control/node_modules/
+control/dist/
+control/.turbo/
+control/coverage/
+control/state/
+ui/node_modules/
+ui/dist/
+ui/.turbo/
+ui/coverage/
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+# pnpm uniquement (cf. AGENTS.md)
+package-lock.json
+yarn.lock
+
+# --- Tests artifacts ---
+tests/.tmp/
+tests/**/__snapshots__/__diff_output__/
+tests/coverage/
+*.pcap.tmp
+
+# --- Docs build ---
+docs/_build/
+docs/.cache/
+
+# --- Local-only configs (les overlays prod restent commit\u00e9s) ---
+configs/*.local.*
+configs/local/
+
+# --- Misc ---
+*.log
+*.pid
+*.sock
+.cache/
+
+# --- Internal tooling (not shipped) ---
+AGENTS.md
+.github/agents/
+.github/hooks/
+.github/instructions/
+.github/prompts/
+.github/skills/
+memory/
+.copilot/
+

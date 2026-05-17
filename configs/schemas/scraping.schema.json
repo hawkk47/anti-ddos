@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anti-ddos.local/schemas/scraping.schema.json",
+  "title": "scraping-aggressif",
+  "description": "Mitigation contre les scrapers naïfs identifiés par signature (User-Agent / headers manquants). N'est PAS une protection anti-scraper sérieuse : un scraper déterminé spoofe trivialement ces signaux.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "rules"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version du document. Incrément monotone à chaque révision."
+    },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "action", "params"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["scraping"],
+          "description": "Identifiant canonique de la mitigation."
+        },
+        "enabled": { "type": "boolean" },
+        "action": {
+          "type": "string",
+          "enum": ["log", "deny"],
+          "description": "Sur signal matché : 'log' laisse passer + incrémente le compteur (défaut), 'deny' répond HTTP 403."
+        },
+        "params": { "$ref": "#/$defs/scrapingParams" },
+        "notes": { "type": "string", "maxLength": 1024 },
+        "reason": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Obligatoire si enabled=false."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "enabled": { "const": false } }, "required": ["enabled"] },
+          "then": { "required": ["reason"] }
+        },
+        {
+          "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
+          "then": {
+            "properties": {
+              "params": {
+                "anyOf": [
+                  { "properties": { "user_agent_deny": { "minItems": 1 } }, "required": ["user_agent_deny"] },
+                  { "properties": { "require_accept_language": { "const": true } }, "required": ["require_accept_language"] },
+                  { "properties": { "require_accept_encoding": { "const": true } }, "required": ["require_accept_encoding"] }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "scrapingParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "user_agent_deny": {
+          "type": "array",
+          "description": "Substrings (case-insensitive) déclencheurs dans le User-Agent. Pas de regex (surface ReDoS). Liste vide ⇒ aucune détection par UA.",
+          "maxItems": 128,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "require_accept_language": {
+          "type": "boolean",
+          "description": "Si true, une requête sans header Accept-Language matche."
+        },
+        "require_accept_encoding": {
+          "type": "boolean",
+          "description": "Si true, une requête sans header Accept-Encoding matche."
+        }
+      }
+    }
+  }
+}

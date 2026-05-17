@@ -1,0 +1,219 @@
+# Règles d'alerte Prometheus — anti-DDoS data plane.
+#
+# Convention :
+#   - `*BlockedSurge` : pic d'activité bloquée → potentielle attaque
+#     ou faux positifs ; consulter le runbook de la famille.
+#   - `*ErrorsNonZero` : un compteur `errors_total` doit toujours
+#     rester à 0. Toute valeur > 0 = bug interne (fail-open silencieux,
+#     ou fail-closed actif sur trafic legit pour les familles deny).
+#     Severity = page.
+#   - `*Saturation` : indicateur de seuil structurellement trop bas.
+#
+# Charger via :
+#   --rule-files=docs/observability/prometheus-rules.yaml
+
+groups:
+  - name: anti-ddos.errors
+    interval: 30s
+    rules:
+      - alert: MitigationErrorsNonZero
+        expr: |
+          sum by (job, mitigation) (
+            increase(
+              {__name__=~"mitigation_.+_errors_total"}[5m]
+            )
+          ) > 0
+        for: 1m
+        labels:
+          severity: page
+          team: data-plane
+        annotations:
+          summary: "Erreur interne dans une mitigation ({{ $labels.mitigation }})"
+          description: >
+            Le compteur errors_total doit rester à 0 en régime normal.
+            Une valeur > 0 indique un bug : fail-open silencieux sur
+            les mitigations fail-open (allow), trafic legit coupé sur
+            les fail-closed (http-flood-l7, credential-stuffing).
+          runbook: docs/runbooks/README.md#convention-de-métriques
+
+  - name: anti-ddos.blocked-surge
+    interval: 30s
+    rules:
+      - alert: HTTPFloodBlockedSurge
+        expr: rate(mitigation_http_flood_l7_blocked_total[5m]) > 50
+        for: 5m
+        labels: { severity: warn, family: http-flood-l7 }
+        annotations:
+          summary: "http-flood-l7 bloque > 50 req/s"
+          runbook: docs/runbooks/http-flood-l7.md
+
+      - alert: SlowPostBlockedSurge
+        expr: rate(mitigation_slow_post_blocked_total[5m]) > 5
+        for: 5m
+        labels: { severity: warn, family: slow-post }
+        annotations:
+          summary: "slow-post tue > 5 conn/s"
+          runbook: docs/runbooks/slow-post.md
+
+      - alert: SlowlorisBlockedSurge
+        expr: rate(mitigation_slowloris_blocked_total[5m]) > 10
+        for: 5m
+        labels: { severity: warn, family: slowloris }
+        annotations:
+          summary: "slowloris ferme > 10 conn/s"
+          runbook: docs/runbooks/slowloris.md
+
+      - alert: LargeHeaderBlockedSurge
+        expr: rate(mitigation_large_header_blocked_total[5m]) > 5
+        for: 5m
+        labels: { severity: warn, family: large-header }
+        annotations:
+          summary: "large-header rejette > 5 req/s (HTTP 431)"
+          runbook: docs/runbooks/large-header.md
+
+      - alert: HashFloodBlockedSurge
+        expr: rate(mitigation_hash_flood_blocked_total[5m]) > 5
+        for: 5m
+        labels: { severity: warn, family: hash-flood }
+        annotations:
+          summary: "hash-flood rejette > 5 req/s (HTTP 400)"
+          runbook: docs/runbooks/hash-flood.md
+
+      - alert: RangeAmpBlockedSurge
+        expr: rate(mitigation_range_amp_blocked_total[5m]) > 5
+        for: 5m
+        labels: { severity: warn, family: range-amp }
+        annotations:
+          summary: "range-amp rejette > 5 req/s (HTTP 416)"
+          runbook: docs/runbooks/range-amp.md
+
+      - alert: CachePoisonBlockedSurge
+        expr: rate(mitigation_cache_poison_blocked_total[5m]) > 1
+        for: 2m
+        labels: { severity: page, family: cache-poison }
+        annotations:
+          summary: "cache-poison action=deny déclenchée"
+          description: >
+            Si action=deny est configurée, tout match = tentative
+            d'exploitation active. Si action=strip, regarder plutôt
+            stripped_total ; une alerte ici sur strip est anormale.
+          runbook: docs/runbooks/cache-poison.md
+
+      - alert: HTTP2RapidResetBlockedSurge
+        expr: rate(mitigation_http2_rapid_reset_blocked_total[5m]) > 5
+        for: 5m
+        labels: { severity: warn, family: http2-rapid-reset }
+        annotations:
+          summary: "http2-rapid-reset ferme > 5 conn/s"
+          runbook: docs/runbooks/http2-rapid-reset.md
+
+      - alert: TLSRenegFloodBlockedSurge
+        expr: rate(mitigation_tls_renegotiation_flood_blocked_total[5m]) > 1
+        for: 5m
+        labels: { severity: warn, family: tls-renegotiation-flood }
+        annotations:
+          summary: "tls-renegotiation-flood ferme > 1 conn/s"
+          runbook: docs/runbooks/tls-renegotiation-flood.md
+
+      - alert: ScrapingMatchedSurge
+        expr: rate(mitigation_scraping_matched_total[10m]) > 20
+        for: 15m
+        labels: { severity: info, family: scraping }
+        annotations:
+          summary: "scraping matche > 20 req/s en moyenne 10 min"
+          description: >
+            Mode habituel = log. Évaluer passage en deny après
+            confirmation que les matchs sont des bots.
+          runbook: docs/runbooks/scraping.md
+
+      - alert: CredStuffBlockedSurge
+        expr: rate(mitigation_credential_stuffing_blocked_total[5m]) > 1
+        for: 5m
+        labels: { severity: page, family: credential-stuffing }
+        annotations:
+          summary: "credential-stuffing bloque > 1 req/s sur routes login"
+          description: >
+            Attaque active de credential stuffing ou faux positifs
+            sur CGNAT. Vérifier distribution IP avant durcir.
+          runbook: docs/runbooks/credential-stuffing.md
+
+  - name: anti-ddos.saturation
+    interval: 60s
+    rules:
+      # Latence p99 d'une mitigation > 1 ms = signal de contention
+      # (lock global, GC pressure, syscall lent). Cf. baseline
+      # hardening.md (chaîne complète ~600 ns/op).
+      - alert: MitigationLatencyP99High
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le, mitigation) (
+              rate({__name__=~"mitigation_.+_duration_seconds_bucket"}[5m])
+            )
+          ) > 0.001
+        for: 10m
+        labels: { severity: warn, team: data-plane }
+        annotations:
+          summary: "Mitigation {{ $labels.mitigation }} : p99 > 1 ms"
+          runbook: docs/hardening.md#2-coût-mesuré
+
+  # ADR 0004 — Couche behavioral credential-stuffing (control plane).
+  # Métriques scrappées sur le control plane Node (port 9090, /metrics)
+  # et non sur le proxy. Job Prometheus dédié recommandé.
+  - name: anti-ddos.behavioral-credstuff
+    interval: 30s
+    rules:
+      - alert: BehavioralCredStuffPushErrors
+        expr: |
+          increase(behavioral_credstuff_push_total{status="error"}[10m]) > 0
+        for: 5m
+        labels: { severity: page, family: credential-stuffing, team: control-plane }
+        annotations:
+          summary: "Push behavioral credstuff control→proxy en erreur"
+          description: >
+            Le pusher control plane n'arrive plus à pousser la
+            blocklist au proxy (réseau, timeout, 5xx). Le data plane
+            applique encore le dernier snapshot reçu. Vérifier
+            connectivité loopback / admin URL, puis runbook.
+          runbook: docs/runbooks/credential-stuffing.md#behavioral
+
+      - alert: BehavioralCredStuffPushStale
+        expr: |
+          time() - behavioral_credstuff_push_last_at_seconds > 600
+          and on() behavioral_credstuff_push_last_at_seconds > 0
+        for: 5m
+        labels: { severity: warn, family: credential-stuffing, team: control-plane }
+        annotations:
+          summary: "Aucun push behavioral credstuff depuis > 10 min"
+          description: >
+            L'orchestrateur ne déclenche plus
+            POST /v1/behavioral/credstuff/push. La blocklist data plane
+            devient obsolète (entries expirent côté proxy).
+          runbook: docs/runbooks/credential-stuffing.md#behavioral
+
+      - alert: BehavioralCredStuffCandidatesSurge
+        expr: behavioral_credstuff_candidates > 1000
+        for: 5m
+        labels: { severity: warn, family: credential-stuffing, team: control-plane }
+        annotations:
+          summary: "> 1000 IPs candidates simultanément (botnet ?)"
+          description: >
+            Soit campagne distribuée active, soit heuristiques trop
+            laxistes. Vérifier `behavioral_credstuff_tracked_users`
+            et la distribution des reasons avant de pousser en
+            enforce.
+          runbook: docs/runbooks/credential-stuffing.md#behavioral
+
+      - alert: BehavioralCredStuffShadowOnly
+        expr: |
+          behavioral_credstuff_push_mode{mode="enforce"} == 0
+          and behavioral_credstuff_candidates > 0
+        for: 60m
+        labels: { severity: info, family: credential-stuffing, team: control-plane }
+        annotations:
+          summary: "Mode shadow avec candidats détectés depuis > 1h"
+          description: >
+            La couche behavioral détecte des candidats mais reste en
+            shadow. Évaluer passage en enforce après revue des faux
+            positifs (cf. ADR 0004 rollout).
+          runbook: docs/adr/0004-credstuff-behavioral.md#rollout

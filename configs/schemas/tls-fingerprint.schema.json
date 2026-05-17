@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anti-ddos.local/schemas/tls-fingerprint.schema.json",
+  "title": "tls-fingerprint",
+  "description": "Mitigation de fingerprinting TLS ClientHello : calcule JA3 (Salesforce, MD5 hex) et JA4 (FoxIO, format tXXYnnmmALPN_<sha12>_<sha12>) à chaque handshake puis bloque les empreintes listées. Le blocage opère au handshake (tls.Config.GetConfigForClient retourne ErrBlocked) — pas de middleware HTTP. Tant qu'aucune terminaison TLS n'est branchée côté proxy, la mitigation reste dormante (configurable mais inactive). Filtrage GREASE conforme RFC 8701. NB : utls / curl-impersonate / Chrome custom builds peuvent émettre des empreintes identiques à du trafic légitime — toute blocklist nécessite curation et a un risque de faux positifs documenté.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "rules"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version du document. Incrément monotone à chaque révision."
+    },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "on_error", "params"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["tls-fingerprint"],
+          "description": "Identifiant canonique de la mitigation."
+        },
+        "enabled": { "type": "boolean" },
+        "on_error": {
+          "type": "string",
+          "enum": ["allow", "deny"],
+          "description": "Comportement sur erreur interne (parsing ClientHello, etc.). Défaut projet = allow (fail-open) car une empreinte non calculable ne doit pas casser le trafic légitime."
+        },
+        "params": { "$ref": "#/$defs/fpParams" },
+        "notes": { "type": "string", "maxLength": 2048 },
+        "reason": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Obligatoire si enabled=false."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "enabled": { "const": false } }, "required": ["enabled"] },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    },
+    "fpParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blocked_ja3", "blocked_ja4"],
+      "properties": {
+        "blocked_ja3": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "description": "JA3 = MD5 hex lowercase (32 caractères)."
+          },
+          "uniqueItems": true,
+          "maxItems": 1024,
+          "description": "Blocklist de hashes JA3 (Salesforce 2017). Liste curée — pas de regex, pas de wildcards : un hash = un ClientHello canonique."
+        },
+        "blocked_ja4": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 64,
+            "pattern": "^[^_]+_[^_]+_[^_]+$",
+            "description": "JA4 = format FoxIO 'tXXYnnmmALPN_<sha12>_<sha12>' (exactement 2 underscores)."
+          },
+          "uniqueItems": true,
+          "maxItems": 1024,
+          "description": "Blocklist de chaînes JA4 (FoxIO 2023). Format strict : 3 segments séparés par '_'. Voir https://github.com/FoxIO-LLC/ja4."
+        }
+      }
+    }
+  }
+}
