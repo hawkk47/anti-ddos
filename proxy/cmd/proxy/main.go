@@ -20,16 +20,21 @@ import (
 	"anti-ddos/proxy/internal/server"
 	"anti-ddos/proxy/mitigations/cachepoison"
 	"anti-ddos/proxy/mitigations/concurrency"
+	"anti-ddos/proxy/mitigations/connflood"
 	"anti-ddos/proxy/mitigations/credstuff"
+	"anti-ddos/proxy/mitigations/geoblockl4"
+	"anti-ddos/proxy/mitigations/handshakeguard"
 	"anti-ddos/proxy/mitigations/hashflood"
 	"anti-ddos/proxy/mitigations/http2reset"
 	"anti-ddos/proxy/mitigations/httpflood"
+	"anti-ddos/proxy/mitigations/ipreputation"
 	"anti-ddos/proxy/mitigations/largeheader"
 	"anti-ddos/proxy/mitigations/rangeamp"
 	"anti-ddos/proxy/mitigations/requesthygiene"
 	"anti-ddos/proxy/mitigations/scraping"
 	"anti-ddos/proxy/mitigations/slowloris"
 	"anti-ddos/proxy/mitigations/slowpost"
+	"anti-ddos/proxy/mitigations/synflood"
 	"anti-ddos/proxy/mitigations/tlsfingerprint"
 	"anti-ddos/proxy/mitigations/tlsreneg"
 )
@@ -169,6 +174,44 @@ func loadConfigFromEnv() (server.Config, error) {
 			BlockedJA3: envCSV("ANTIDDOS_TLS_FINGERPRINT_BLOCKED_JA3", nil),
 			BlockedJA4: envCSV("ANTIDDOS_TLS_FINGERPRINT_BLOCKED_JA4", nil),
 			OnError:    envOr("ANTIDDOS_TLS_FINGERPRINT_ON_ERROR", "allow"),
+		},
+		IPReputation: ipreputation.Config{
+			Enabled:           envBool("ANTIDDOS_IPREP_ENABLED", false),
+			Allowlist:         envCSV("ANTIDDOS_IPREP_ALLOWLIST", nil),
+			AllowlistStrict:   envBool("ANTIDDOS_IPREP_ALLOWLIST_STRICT", false),
+			Blocklist:         envCSV("ANTIDDOS_IPREP_BLOCKLIST", nil),
+			MaxDynamicEntries: envInt("ANTIDDOS_IPREP_MAX_DYNAMIC", 0),
+			DefaultBlockTTL:   envDuration("ANTIDDOS_IPREP_BLOCK_TTL", 0),
+			OnError:           envOr("ANTIDDOS_IPREP_ON_ERROR", "allow"),
+		},
+		ConnFlood: connflood.Config{
+			Enabled:           envBool("ANTIDDOS_CONNFLOOD_ENABLED", false),
+			MaxConnsPerIP:     envInt("ANTIDDOS_CONNFLOOD_MAX_PER_IP", 0),
+			MaxConnsPerSubnet: envInt("ANTIDDOS_CONNFLOOD_MAX_PER_SUBNET", 0),
+			OnError:           envOr("ANTIDDOS_CONNFLOOD_ON_ERROR", "allow"),
+		},
+		SYNFlood: synflood.Config{
+			Enabled:                   envBool("ANTIDDOS_SYNFLOOD_ENABLED", false),
+			AcceptsPerSecondPerIP:     envFloat("ANTIDDOS_SYNFLOOD_RPS_IP", 0),
+			BurstPerIP:                envInt("ANTIDDOS_SYNFLOOD_BURST_IP", 0),
+			AcceptsPerSecondPerSubnet: envFloat("ANTIDDOS_SYNFLOOD_RPS_SUBNET", 0),
+			BurstPerSubnet:            envInt("ANTIDDOS_SYNFLOOD_BURST_SUBNET", 0),
+			ReportTTL:                 envDuration("ANTIDDOS_SYNFLOOD_REPORT_TTL", 0),
+			OnError:                   envOr("ANTIDDOS_SYNFLOOD_ON_ERROR", "allow"),
+		},
+		HandshakeGuard: handshakeguard.Config{
+			Enabled:          envBool("ANTIDDOS_HANDSHAKE_ENABLED", false),
+			HandshakeWindow:  envDuration("ANTIDDOS_HANDSHAKE_WINDOW", 0),
+			AbandonThreshold: envInt("ANTIDDOS_HANDSHAKE_THRESHOLD", 0),
+			ObserveWindow:    envDuration("ANTIDDOS_HANDSHAKE_OBSERVE", 0),
+			ReportTTL:        envDuration("ANTIDDOS_HANDSHAKE_REPORT_TTL", 0),
+			OnError:          envOr("ANTIDDOS_HANDSHAKE_ON_ERROR", "allow"),
+		},
+		GeoBlockL4: geoblockl4.Config{
+			Enabled: envBool("ANTIDDOS_GEOBLOCKL4_ENABLED", false),
+			Allow:   envCSV("ANTIDDOS_GEOBLOCKL4_ALLOW", nil),
+			Block:   envCSV("ANTIDDOS_GEOBLOCKL4_BLOCK", nil),
+			OnError: envOr("ANTIDDOS_GEOBLOCKL4_ON_ERROR", "allow"),
 		},
 	}
 	return cfg, cfg.Validate()

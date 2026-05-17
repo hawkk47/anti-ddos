@@ -1,0 +1,28 @@
+# configs/base/connflood.yaml
+#
+# Cap de connexions TCP concurrentes par IP et par sous-réseau (/24
+# IPv4, /48 IPv6). Couvre les attaques de conn-flooding L4 où une
+# source ouvre des milliers de connexions pour épuiser FD + RAM.
+#
+# Schéma : configs/schemas/connflood.schema.json
+# Mitigation Go : proxy/mitigations/connflood
+# Threat model : docs/threat-model.md#conn-flood
+
+version: 1
+
+rules:
+  - id: conn-flood
+    enabled: false
+    on_error: allow
+    params:
+      # Plafond par IP source. Un client légitime derrière NAT ouvre
+      # rarement plus de 8-16 conns simultanées vers un même origin.
+      max_conns_per_ip: 128
+      # Plafond par /24 (IPv4) ou /48 (IPv6). Empêche un attaquant
+      # de contourner la limite par-IP en utilisant tout un bloc.
+      # 0 = désactivé (cap par-IP seulement).
+      max_conns_per_subnet: 1024
+    reason: désactivé par défaut, à activer par environnement
+    notes: |
+      Reproducer : proxy/mitigations/connflood/connflood_test.go
+      Loopback / RFC1918 / ULA ne sont jamais comptés.

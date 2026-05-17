@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anti-ddos.local/schemas/connflood.schema.json",
+  "title": "conn-flood",
+  "description": "Cap des connexions TCP concurrentes par IP source et par sous-réseau.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "rules"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "rules": { "type": "array", "items": { "$ref": "#/$defs/rule" } }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "on_error", "params"],
+      "properties": {
+        "id": { "type": "string", "enum": ["conn-flood"] },
+        "enabled": { "type": "boolean" },
+        "on_error": { "type": "string", "enum": ["allow", "deny"] },
+        "params": { "$ref": "#/$defs/params" },
+        "notes": { "type": "string", "maxLength": 1024 },
+        "reason": { "type": "string", "maxLength": 256 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "enabled": { "const": false } }, "required": ["enabled"] },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_conns_per_ip"],
+      "properties": {
+        "max_conns_per_ip": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "max_conns_per_subnet": { "type": "integer", "minimum": 0, "maximum": 10000000 }
+      }
+    }
+  }
+}

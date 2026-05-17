@@ -84,7 +84,8 @@ func newTestServer(t *testing.T) (*httptest.Server, *slowloris.Limiter) {
 	if err != nil {
 		t.Fatalf("tlsfingerprint: %v", err)
 	}
-	srv := httptest.NewServer(Handler(lim, flood, hdr, body, tlsL, h2, hash, rng, cache, scrap, cred, conc, hyg, tlsfp, nil, reg))
+	ipr, cf, sf, hg, gl := mustL3L4(t, reg)
+	srv := httptest.NewServer(Handler(lim, flood, hdr, body, tlsL, h2, hash, rng, cache, scrap, cred, conc, hyg, tlsfp, ipr, cf, sf, hg, gl, nil, reg))
 	t.Cleanup(srv.Close)
 	return srv, lim
 }
@@ -208,7 +209,8 @@ func TestAdmin_RejectsNonLoopback(t *testing.T) {
 	conc, _ := concurrency.New(concurrency.Config{}, metrics.NewInMemory())
 	hyg, _ := requesthygiene.New(requesthygiene.Config{}, metrics.NewInMemory())
 	tlsfp, _ := tlsfingerprint.New(tlsfingerprint.Config{}, metrics.NewInMemory())
-	h := Handler(lim, flood, hdr, body, tlsL, h2, hash, rng, cache, scrap, cred, conc, hyg, tlsfp, nil, metrics.NewInMemory())
+	ipr2, cf2, sf2, hg2, gl2 := mustL3L4(t, metrics.NewInMemory())
+	h := Handler(lim, flood, hdr, body, tlsL, h2, hash, rng, cache, scrap, cred, conc, hyg, tlsfp, ipr2, cf2, sf2, hg2, gl2, nil, metrics.NewInMemory())
 	req := httptest.NewRequest(http.MethodGet, "/_admin/v1/health", nil)
 	req.RemoteAddr = "203.0.113.7:54321"
 	rec := httptest.NewRecorder()

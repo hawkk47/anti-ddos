@@ -1,0 +1,29 @@
+# configs/base/handshakeguard.yaml
+#
+# Détecte les connexions TCP half-open applicatives : 3-way handshake
+# OK mais aucun octet utile envoyé dans la fenêtre (pas de ClientHello
+# TLS, pas de première ligne HTTP). Au-delà du seuil d'abandons,
+# l'IP est signalée à ip-reputation.
+#
+# Schéma : configs/schemas/handshakeguard.schema.json
+# Mitigation Go : proxy/mitigations/handshakeguard
+# Threat model : docs/threat-model.md#handshake-guard
+
+version: 1
+
+rules:
+  - id: handshake-guard
+    enabled: false
+    on_error: allow
+    params:
+      # Délai max entre Accept() et premier octet lu.
+      handshake_window_ms: 5000
+      # Nombre d'abandons toléré dans observe_window_ms avant signalement.
+      abandon_threshold: 20
+      observe_window_ms: 60000
+      # TTL du signalement vers ip-reputation. 0 = pas de signalement.
+      report_ttl_ms: 900000   # 15 min
+    reason: désactivé par défaut, à activer par environnement
+    notes: |
+      Reproducer : proxy/mitigations/handshakeguard/handshakeguard_test.go
+      Loopback / privé exempté.

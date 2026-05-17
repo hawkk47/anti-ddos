@@ -157,7 +157,8 @@ func TestMetrics_ExposesPrometheusFormat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("limiter: %v", err)
 	}
-	srv := httptest.NewServer(Handler(lim, mustFlood(t, reg), mustHdr(t, reg), mustBody(t, reg), mustTLS(t, reg), mustH2(t, reg), mustHash(t, reg), mustRange(t, reg), mustCache(t, reg), mustScrap(t, reg), mustCred(t, reg), mustConc(t, reg), mustHyg(t, reg), mustTLSFP(t, reg), nil, reg))
+	ipr, cf, sf, hg, gl := mustL3L4(t, reg)
+	srv := httptest.NewServer(Handler(lim, mustFlood(t, reg), mustHdr(t, reg), mustBody(t, reg), mustTLS(t, reg), mustH2(t, reg), mustHash(t, reg), mustRange(t, reg), mustCache(t, reg), mustScrap(t, reg), mustCred(t, reg), mustConc(t, reg), mustHyg(t, reg), mustTLSFP(t, reg), ipr, cf, sf, hg, gl, nil, reg))
 	defer srv.Close()
 
 	// Génère un peu d'activité pour avoir des compteurs non nuls.
@@ -195,7 +196,8 @@ func TestMetrics_ExposesPrometheusFormat(t *testing.T) {
 func TestMetrics_RejectsNonLoopback(t *testing.T) {
 	reg := metrics.NewInMemory()
 	lim, _ := slowloris.New(slowloris.Config{}, reg)
-	h := Handler(lim, mustFlood(t, reg), mustHdr(t, reg), mustBody(t, reg), mustTLS(t, reg), mustH2(t, reg), mustHash(t, reg), mustRange(t, reg), mustCache(t, reg), mustScrap(t, reg), mustCred(t, reg), mustConc(t, reg), mustHyg(t, reg), mustTLSFP(t, reg), nil, reg)
+	ipr, cf, sf, hg, gl := mustL3L4(t, reg)
+	h := Handler(lim, mustFlood(t, reg), mustHdr(t, reg), mustBody(t, reg), mustTLS(t, reg), mustH2(t, reg), mustHash(t, reg), mustRange(t, reg), mustCache(t, reg), mustScrap(t, reg), mustCred(t, reg), mustConc(t, reg), mustHyg(t, reg), mustTLSFP(t, reg), ipr, cf, sf, hg, gl, nil, reg)
 	req := httptest.NewRequest(http.MethodGet, "/_admin/v1/metrics", nil)
 	req.RemoteAddr = "198.51.100.10:12345"
 	rec := httptest.NewRecorder()

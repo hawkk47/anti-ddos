@@ -1,0 +1,28 @@
+# configs/base/geoblock-l4.yaml
+#
+# Filtre géographique L4 : refuse les connexions par code pays
+# ISO-3166-1 alpha-2 AVANT toute terminaison TLS. Utilise la base
+# embarquée phuslu/iploc (pure-Go).
+#
+# Politique : block prioritaire sur allow. Liste allow vide ⇒ aucun
+# filtre d'allowlist (seul block s'applique).
+#
+# Schéma : configs/schemas/geoblock-l4.schema.json
+# Mitigation Go : proxy/mitigations/geoblockl4
+# Threat model : docs/threat-model.md#geoblock-l4
+
+version: 1
+
+rules:
+  - id: geoblock-l4
+    enabled: false
+    on_error: allow
+    params:
+      # Pays autorisés (ISO alpha-2 majuscule). Vide ⇒ tous sauf block.
+      allow: []
+      # Pays refusés.
+      block: []
+    reason: désactivé par défaut, dépend de la juridiction du service
+    notes: |
+      Reproducer : proxy/mitigations/geoblockl4/geoblockl4_test.go
+      Loopback / privé ne sont jamais bloqués.

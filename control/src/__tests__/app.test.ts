@@ -46,23 +46,28 @@ describe('POST /v1/reload', () => {
 
     expect(res.statusCode).toBe(202);
     expect(res.json()).toEqual({ status: 'accepted', at: 42, pushed: 0 });
-    // 14 familles poussées : connections + ratelimit + headers + bodies + tls + http2 + hash-flood + range-amp + cache-poison + scraping + credential-stuffing + concurrency + request-hygiene + tls-fingerprint.
-    expect(fetcher).toHaveBeenCalledTimes(14);
+    // 19 familles poussées : 14 L7 + 5 L3/L4 (ip-reputation, conn-flood, syn-flood, handshake-guard, geoblock-l4).
+    expect(fetcher).toHaveBeenCalledTimes(19);
     const calls = (fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls;
     const urls = calls.map((c) => c[0] as string).sort();
     expect(urls).toEqual([
       'http://127.0.0.1:8081/_admin/v1/mitigations/bodies',
       'http://127.0.0.1:8081/_admin/v1/mitigations/cache-poison',
       'http://127.0.0.1:8081/_admin/v1/mitigations/concurrency',
+      'http://127.0.0.1:8081/_admin/v1/mitigations/conn-flood',
       'http://127.0.0.1:8081/_admin/v1/mitigations/connections',
       'http://127.0.0.1:8081/_admin/v1/mitigations/credential-stuffing',
+      'http://127.0.0.1:8081/_admin/v1/mitigations/geoblock-l4',
+      'http://127.0.0.1:8081/_admin/v1/mitigations/handshake-guard',
       'http://127.0.0.1:8081/_admin/v1/mitigations/hash-flood',
       'http://127.0.0.1:8081/_admin/v1/mitigations/headers',
       'http://127.0.0.1:8081/_admin/v1/mitigations/http2',
+      'http://127.0.0.1:8081/_admin/v1/mitigations/ip-reputation',
       'http://127.0.0.1:8081/_admin/v1/mitigations/range-amp',
       'http://127.0.0.1:8081/_admin/v1/mitigations/ratelimit',
       'http://127.0.0.1:8081/_admin/v1/mitigations/request-hygiene',
       'http://127.0.0.1:8081/_admin/v1/mitigations/scraping',
+      'http://127.0.0.1:8081/_admin/v1/mitigations/syn-flood',
       'http://127.0.0.1:8081/_admin/v1/mitigations/tls',
       'http://127.0.0.1:8081/_admin/v1/mitigations/tls-fingerprint',
     ]);

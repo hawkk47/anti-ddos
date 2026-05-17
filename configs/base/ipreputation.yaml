@@ -1,0 +1,35 @@
+# configs/base/ipreputation.yaml
+#
+# Allowlist + blocklist statiques (CIDR ou IP) et blocklist dynamique
+# alimentée par les autres mitigations L3/L4 via le Reporter Go
+# (synflood, handshakeguard).
+#
+# Schéma : configs/schemas/ipreputation.schema.json
+# Mitigation Go : proxy/mitigations/ipreputation
+# Threat model : docs/threat-model.md#ip-reputation
+
+version: 1
+
+rules:
+  - id: ip-reputation
+    enabled: false
+    # fail-open : un bug du filtre ne doit pas couper le trafic légitime.
+    on_error: allow
+    params:
+      # Listes statiques. Loopback / RFC1918 / ULA ne sont jamais
+      # bloqués (court-circuit codé en dur).
+      allowlist: []
+      # Si true ET allowlist non vide : seules les IPs de allowlist
+      # passent (mode "fortress"). À utiliser pour les endpoints admin
+      # ou les WAFs sectoriels uniquement.
+      allowlist_strict: false
+      blocklist: []
+      # Cap sur la blocklist dynamique (éviction LRU au-delà).
+      max_dynamic_entries: 50000
+      # TTL par défaut appliqué quand un Reporter ne fournit pas le sien.
+      default_block_ttl_ms: 600000   # 10 min
+    reason: désactivé par défaut, à activer par environnement
+    notes: |
+      Reproducer : proxy/mitigations/ipreputation/ipreputation_test.go
+      Métriques (préfixe mitigation_ip_reputation_) :
+        - evaluated_total / blocked_total / errors_total / duration_seconds

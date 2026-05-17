@@ -12,6 +12,8 @@ Reverse proxy HTTP avec mitigations anti-DDoS L7, portable
 
 ## Mitigations couvertes
 
+### Couche application (L7)
+
 | Famille | Cible |
 |---|---|
 | `httpflood` | Flood HTTP L7 (RPS abusif, scrapers agressifs) |
@@ -25,6 +27,19 @@ Reverse proxy HTTP avec mitigations anti-DDoS L7, portable
 | `largeheader` / `requesthygiene` | Headers oversized, encodage douteux |
 | `scraping` | Patterns bot / scraping en masse |
 | `tlsfingerprint` / `tlsreneg` | JA3 hostiles, renégociation TLS abusive |
+
+### Couche réseau (L3/L4)
+
+Listener wrappers TCP appliqués avant la terminaison TLS. Tous fail-open
+par défaut, contournement automatique du loopback et des préfixes RFC1918/ULA.
+
+| Famille | Cible |
+|---|---|
+| `ip-reputation` | Allowlist/blocklist CIDR statiques + entrées dynamiques à TTL |
+| `conn-flood` | Plafond de connexions simultanées par IP et par sous-réseau |
+| `syn-flood` | Cadence d'acceptation par IP/sous-réseau (token bucket) avec report vers `ip-reputation` |
+| `handshake-guard` | TCP half-open applicatif (handshake OK mais aucun octet utile) |
+| `geoblock-l4` | Filtre par code pays ISO-3166-1 alpha-2 dès l'acceptation TCP |
 
 Chaque famille a une règle YAML déclarative dans [configs/base/](configs/base/),
 un module Go dans [proxy/mitigations/](proxy/mitigations/) et un

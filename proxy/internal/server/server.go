@@ -24,16 +24,21 @@ import (
 	"anti-ddos/proxy/internal/metrics"
 	"anti-ddos/proxy/mitigations/cachepoison"
 	"anti-ddos/proxy/mitigations/concurrency"
+	"anti-ddos/proxy/mitigations/connflood"
 	"anti-ddos/proxy/mitigations/credstuff"
+	"anti-ddos/proxy/mitigations/geoblockl4"
+	"anti-ddos/proxy/mitigations/handshakeguard"
 	"anti-ddos/proxy/mitigations/hashflood"
 	"anti-ddos/proxy/mitigations/http2reset"
 	"anti-ddos/proxy/mitigations/httpflood"
+	"anti-ddos/proxy/mitigations/ipreputation"
 	"anti-ddos/proxy/mitigations/largeheader"
 	"anti-ddos/proxy/mitigations/rangeamp"
 	"anti-ddos/proxy/mitigations/requesthygiene"
 	"anti-ddos/proxy/mitigations/scraping"
 	"anti-ddos/proxy/mitigations/slowloris"
 	"anti-ddos/proxy/mitigations/slowpost"
+	"anti-ddos/proxy/mitigations/synflood"
 	"anti-ddos/proxy/mitigations/tlsfingerprint"
 	"anti-ddos/proxy/mitigations/tlsreneg"
 
@@ -126,6 +131,29 @@ type Config struct {
 	// #request-hygiene.
 	RequestHygiene requesthygiene.Config
 
+	// IPReputation : allow/block listes statiques + dynamique
+	// (alimentée par synflood / handshakeguard via Reporter).
+	// Cf. configs/base/ipreputation.yaml.
+	IPReputation ipreputation.Config
+
+	// ConnFlood : cap des connexions concurrentes par IP et par
+	// sous-réseau (/24, /48). Cf. configs/base/connflood.yaml.
+	ConnFlood connflood.Config
+
+	// SYNFlood : token bucket par IP/subnet sur le débit d'Accept.
+	// Signale les IPs abusives à IPReputation.
+	// Cf. configs/base/synflood.yaml.
+	SYNFlood synflood.Config
+
+	// HandshakeGuard : détecte les connexions TCP qui n'envoient
+	// jamais d'octet utile dans la fenêtre. Signale via Reporter.
+	// Cf. configs/base/handshakeguard.yaml.
+	HandshakeGuard handshakeguard.Config
+
+	// GeoBlockL4 : refuse les connexions par code pays ISO-3166
+	// avant tout handshake TLS. Cf. configs/base/geoblock-l4.yaml.
+	GeoBlockL4 geoblockl4.Config
+
 	// TLSFingerprint : empreintes JA3/JA4 du ClientHello + blocklist.
 	// Bloque au handshake (GetConfigForClient → ErrBlocked) lorsqu'une
 	// terminaison TLS est branchée. Sans TLS terminé côté proxy, la
@@ -196,6 +224,21 @@ func (c Config) Validate() error {
 	if err := c.TLSFingerprint.Validate(); err != nil {
 		return fmt.Errorf("tls_fingerprint: %w", err)
 	}
+	if err := c.IPReputation.Validate(); err != nil {
+		return fmt.Errorf("ip_reputation: %w", err)
+	}
+	if err := c.ConnFlood.Validate(); err != nil {
+		return fmt.Errorf("conn_flood: %w", err)
+	}
+	if err := c.SYNFlood.Validate(); err != nil {
+		return fmt.Errorf("syn_flood: %w", err)
+	}
+	if err := c.HandshakeGuard.Validate(); err != nil {
+		return fmt.Errorf("handshake_guard: %w", err)
+	}
+	if err := c.GeoBlockL4.Validate(); err != nil {
+		return fmt.Errorf("geoblock_l4: %w", err)
+	}
 	return nil
 }
 
@@ -222,6 +265,11 @@ type Server struct {
 	concurrency *concurrency.Limiter
 	reqhygiene  *requesthygiene.Limiter
 	tlsfp       *tlsfingerprint.Limiter
+	ipreput     *ipreputation.Limiter
+	connflood   *connflood.Limiter
+	synflood    *synflood.Limiter
+	handshake   *handshakeguard.Limiter
+	geoblockl4  *geoblockl4.Limiter
 	// credBlocklist : blocklist d'IP poussée par le control plane
 	// (ADR 0004). Consultée par le middleware credstuff avant le bucket
 	// per-IP. Phase 1 : exposée via l'admin, pas encore branchée.
@@ -301,6 +349,30 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("tls_fingerprint init: %w", err)
 	}
+	ipreputLim, err := ipreputation.New(cfg.IPReputation, reg)
+	if err != nil {
+		return nil, fmt.Errorf("ip_reputation init: %w", err)
+	}
+	connfloodLim, err := connflood.New(cfg.ConnFlood, reg)
+	if err != nil {
+		return nil, fmt.Errorf("conn_flood init: %w", err)
+	}
+	synfloodLim, err := synflood.New(cfg.SYNFlood, reg)
+	if err != nil {
+		return nil, fmt.Errorf("syn_flood init: %w", err)
+	}
+	handshakeLim, err := handshakeguard.New(cfg.HandshakeGuard, reg)
+	if err != nil {
+		return nil, fmt.Errorf("handshake_guard init: %w", err)
+	}
+	geoblockL4Lim, err := geoblockl4.New(cfg.GeoBlockL4, reg)
+	if err != nil {
+		return nil, fmt.Errorf("geoblock_l4 init: %w", err)
+	}
+	// Câblage cross-mitigation : synflood et handshakeguard signalent
+	// les IPs abusives à ipreputation, qui les met en blocklist dynamique.
+	synfloodLim.SetReporter(ipreputLim)
+	handshakeLim.SetReporter(ipreputLim)
 	credBlocklist := blocklist.New(reg)
 	// ADR 0004 phase 2 : la blocklist est install\u00e9e d\u00e8s le boot. Sa
 	// consultation effective d\u00e9pend de cfg.CredStuff.BlocklistEnabled.
@@ -359,7 +431,7 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		if err := requireAdminLoopback(cfg.AdminListenAddr); err != nil {
 			return nil, err
 		}
-		adminMux := adminapi.Handler(lim, floodLim, hdrLim, bodyLim, tlsLim, h2Lim, hashLim, rangeLim, cacheLim, scrapLim, credLim, concLim, hygLim, tlsfpLim, credBlocklist, reg)
+		adminMux := adminapi.Handler(lim, floodLim, hdrLim, bodyLim, tlsLim, h2Lim, hashLim, rangeLim, cacheLim, scrapLim, credLim, concLim, hygLim, tlsfpLim, ipreputLim, connfloodLim, synfloodLim, handshakeLim, geoblockL4Lim, credBlocklist, reg)
 		adminHandler := adminapi.BearerAuth(cfg.AdminAuthToken)(adminMux)
 		adminSrv = &http.Server{
 			Addr:              cfg.AdminListenAddr,
@@ -393,6 +465,11 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		concurrency:   concLim,
 		reqhygiene:    hygLim,
 		tlsfp:         tlsfpLim,
+		ipreput:       ipreputLim,
+		connflood:     connfloodLim,
+		synflood:      synfloodLim,
+		handshake:     handshakeLim,
+		geoblockl4:    geoblockL4Lim,
 		credBlocklist: credBlocklist,
 	}, nil
 }
@@ -442,6 +519,21 @@ func (s *Server) RequestHygiene() *requesthygiene.Limiter { return s.reqhygiene 
 // dans le mode h2c actuel — cf. docs/threat-model.md#ja3-ja4-fingerprint).
 func (s *Server) TLSFingerprint() *tlsfingerprint.Limiter { return s.tlsfp }
 
+// IPReputation retourne le limiter d'allow/blocklist d'IP pour reload à chaud.
+func (s *Server) IPReputation() *ipreputation.Limiter { return s.ipreput }
+
+// ConnFlood retourne le limiter de cap concurrent par IP/subnet pour reload à chaud.
+func (s *Server) ConnFlood() *connflood.Limiter { return s.connflood }
+
+// SYNFlood retourne le limiter d'Accept par IP/subnet pour reload à chaud.
+func (s *Server) SYNFlood() *synflood.Limiter { return s.synflood }
+
+// HandshakeGuard retourne le détecteur de half-open applicatif pour reload à chaud.
+func (s *Server) HandshakeGuard() *handshakeguard.Limiter { return s.handshake }
+
+// GeoBlockL4 retourne le filtre géo L4 pour reload à chaud.
+func (s *Server) GeoBlockL4() *geoblockl4.Limiter { return s.geoblockl4 }
+
 // CredBlocklist retourne la blocklist d'IP pour le credential-stuffing
 // (ADR 0004). Phase 1 : expos\u00e9e via l'admin pour permettre au control
 // plane de pousser des entr\u00e9es ; pas encore consult\u00e9e par le middleware.
@@ -458,11 +550,20 @@ func (s *Server) Run(ctx context.Context) error {
 		return fmt.Errorf("listen %s: %w", s.cfg.ListenAddr, err)
 	}
 	s.listener = ln
-	// Ordre des wrappers (extérieur → intérieur) :
-	//   tls-reneg : rate-limit des nouveaux Accept par IP (rejette
-	//               tôt avant tout traitement applicatif).
-	//   slowloris : compte les connexions simultanées par IP.
-	wrapped := s.tlsreneg.WrapListener(ln)
+	// Chaîne de wrappers L3/L4 puis L7 (extérieur → intérieur) :
+	//   ip-reputation   : allow/block listes ; ferme silencieusement.
+	//   conn-flood      : cap concurrent par IP et /24-/48.
+	//   syn-flood       : token bucket d'Accept par IP/subnet ; signale ip-reputation.
+	//   handshake-guard : détecte les conns sans premier octet ; signale ip-reputation.
+	//   geoblock-l4     : refus par code pays (iploc).
+	//   tls-reneg       : rate-limit handshakes par IP.
+	//   slowloris       : compte connexions simultanées par IP.
+	wrapped := s.ipreput.WrapListener(ln)
+	wrapped = s.connflood.WrapListener(wrapped)
+	wrapped = s.synflood.WrapListener(wrapped)
+	wrapped = s.handshake.WrapListener(wrapped)
+	wrapped = s.geoblockl4.WrapListener(wrapped)
+	wrapped = s.tlsreneg.WrapListener(wrapped)
 	wrapped = s.slowloris.Wrap(wrapped)
 
 	if s.adminSrv != nil {

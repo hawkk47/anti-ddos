@@ -9,12 +9,16 @@ Format des sections : généré par le prompt
 
 ## Périmètre
 
-- Couche cible : **L7 HTTP/1.1 et HTTP/2** sur TCP+TLS.
+- Couche cible : **L3/L4 TCP** (filtrage IP/port/flux) et **L7 HTTP/1.1
+  et HTTP/2** sur TCP+TLS.
 - Plateformes : Windows 10+ et Linux x86_64 (cf.
   [ADR 0002](./adr/0002-portability-windows-linux.md)).
-- **Hors scope** L3/L4 (SYN flood massif, amplification UDP) : à
-  traiter par l'infra réseau en amont (cloud provider, ISP). Le proxy
-  assume que le trafic IP arrive jusqu'à lui.
+- **Hors scope** L3/L4 strictement réseau (amplification UDP / DNS,
+  SYN flood au niveau kernel hors connexion `Accept()`) : à traiter
+  par l'infra réseau en amont (cloud provider, ISP). Le proxy assume
+  que le trafic IP arrive jusqu'à `Accept()` ; à partir de là, les
+  cinq mitigations L3/L4 du paragraphe « Réseau » prennent le relais
+  (cf. [ADR 0005](./adr/0005-l3l4-listener-wrappers.md)).
 
 ## Index (MVP)
 
@@ -36,6 +40,11 @@ Les 5 attaques cibles du MVP, par priorité d'implémentation :
 | 12 | [concurrency-saturation](#concurrency-saturation) | **livré v1.2** | Saturation in-flight (rafale légitime, multi-IP) — load shedding global |
 | 13 | [request-hygiene](#request-hygiene) | **livré v1.3** | Méthodes hors-RFC, URIs énormes, framing ambigu (CL/TE conflict, smuggling) |
 | 14 | [ja3-ja4-fingerprint](#ja3-ja4-fingerprint) | **livré v1.4** (dormant) | Bots TLS connus par empreinte JA3 / JA4 du ClientHello |
+| 15 | [ip-reputation](#ip-reputation) | **livré v1.5** (dormant) | IP/CIDR statiques + dynamiques (TTL) connus hostiles |
+| 16 | [conn-flood](#conn-flood) | **livré v1.5** (dormant) | Saturation TCP par IP/sous-réseau (FD + mémoire kernel) |
+| 17 | [syn-flood](#syn-flood) | **livré v1.5** (dormant) | Cadence d'`Accept()` abusive par IP (token bucket) |
+| 18 | [handshake-guard](#handshake-guard) | **livré v1.5** (dormant) | TCP ouvert mais aucun octet utile → abandon massif |
+| 19 | [geoblock-l4](#geoblock-l4) | **livré v1.5** (dormant) | Filtrage géo ISO-3166 dès l'`Accept` (pré-TLS) |
 
 Post-MVP : aucune attaque restante au backlog initial.
 
@@ -1214,4 +1223,159 @@ et son équivalent `.ps1` (loopback only).
 - [RFC 8446 §4.1.2 — TLS 1.3 ClientHello](https://www.rfc-editor.org/rfc/rfc8446#section-4.1.2).
 
 ---
+
+## ip-reputation
+
+**Vecteur.** L'attaquant réutilise une IP ou un préfixe CIDR déjà
+identifié comme hostile (botnet, sortie Tor connue, scanner public,
+honeypot interne ayant collecté l'IP, etc.). Sans filtrage en amont
+de TLS, chaque tentative coûte un handshake complet, une allocation de
+buffer applicative et entre dans les compteurs des mitigations L7.
+
+**Mitigation.** [`proxy/mitigations/ipreputation/`](../proxy/mitigations/ipreputation/).
+Listener wrapper TCP, le plus externe de la chaîne L3/L4 (cf.
+[ADR 0005](./adr/0005-l3l4-listener-wrappers.md)). Deux familles
+d'entrées :
+
+- **statiques** (`allowlist`, `blocklist`) : CIDR IPv4/IPv6 chargés au
+  démarrage et via hot-reload.
+- **dynamiques** : ajoutées en runtime par `BlockIP(ip, ttl)`, expirées
+  par TTL. Cap configurable (`max_dynamic_entries`) pour éviter
+  l'épuisement mémoire si un attaquant force le report.
+
+Mode `allowlist_strict` : refuse tout ce qui n'est pas explicitement
+listé. Réservé aux backends internes.
+
+**Limites.**
+- N'arrête pas un attaquant qui rote ses IPs (botnet large) plus vite
+  que le TTL.
+- La liste statique doit être curée à la main. Le projet ne livre
+  **aucune** feed automatique.
+
+**Reproducer.** [`proxy/mitigations/ipreputation/ipreputation_test.go`](../proxy/mitigations/ipreputation/ipreputation_test.go).
+
+**Références.**
+- [MITRE ATT&CK T1583.003 — *Acquire Infrastructure: Botnet*](https://attack.mitre.org/techniques/T1583/003/).
+
+---
+
+## conn-flood
+
+**Vecteur.** Une IP (ou un sous-réseau) ouvre des milliers de
+connexions TCP simultanées sans les fermer, épuisant les file
+descriptors et la mémoire kernel du proxy. Variant low-and-slow :
+chaque connexion isolée semble bénigne.
+
+**Mitigation.** [`proxy/mitigations/connflood/`](../proxy/mitigations/connflood/).
+Compteur de connexions actives par IP **et** par préfixe agrégé
+(`/24` IPv4, `/64` IPv6) via `netshield.SubnetKey`. La connexion qui
+dépasse `max_conns_per_ip` ou `max_conns_per_subnet` est fermée
+immédiatement après `Accept()`. Les compteurs sont décrémentés dans
+`Close()` via `sync.Once` (idempotent même si Close est appelé deux
+fois par la pile TLS/HTTP).
+
+**Limites.**
+- Ne distingue pas une IP NAT légitime d'un attaquant. Le seuil
+  par-sous-réseau doit être large devant les déploiements clients
+  attendus (mobiles, CGNAT).
+- Ne couvre pas les connexions très courtes et très rapides (vecteur
+  `syn-flood`).
+
+**Reproducer.** [`proxy/mitigations/connflood/connflood_test.go`](../proxy/mitigations/connflood/connflood_test.go).
+
+**Références.**
+- [Linux kernel — *Net TCP backlog parameters*](https://www.kernel.org/doc/Documentation/networking/scaling.txt).
+
+---
+
+## syn-flood
+
+**Vecteur.** Cadence d'ouverture (`Accept()`) abusive par une même IP.
+Diffère de `conn-flood` qui regarde le **stock** de connexions ; ici on
+regarde le **flux**. Typique d'un scanner ou d'un attaquant qui ferme
+aussitôt la connexion pour repartir.
+
+**Mitigation.** [`proxy/mitigations/synflood/`](../proxy/mitigations/synflood/).
+Token bucket par IP (`accepts_per_second_per_ip`, `burst_per_ip`) et
+optionnellement par sous-réseau. Sur dépassement, la connexion est
+acceptée puis immédiatement fermée et l'IP signalée via le `Reporter`
+(implémenté par `ip-reputation` ; cf.
+[ADR 0005 §Reporter](./adr/0005-l3l4-listener-wrappers.md)).
+Le TTL du blocage est `report_ttl_ms`, indépendant de
+`default_block_ttl_ms` côté `ip-reputation`.
+
+**Limites.**
+- Le projet ne filtre **pas** au niveau SYN kernel (cf.
+  [ADR 0002](./adr/0002-portability-windows-linux.md)) : un vrai SYN
+  flood saturant la backlog reste l'affaire de l'infra réseau amont.
+- Pas de distinction par port destination — le proxy n'écoute qu'un seul
+  socket TCP.
+
+**Reproducer.** [`proxy/mitigations/synflood/synflood_test.go`](../proxy/mitigations/synflood/synflood_test.go).
+
+**Références.**
+- [RFC 4987 — *TCP SYN Flooding Attacks and Common Mitigations*](https://www.rfc-editor.org/rfc/rfc4987).
+
+---
+
+## handshake-guard
+
+**Vecteur.** L'attaquant établit le handshake TCP (3-way) puis
+**n'envoie aucun octet utile**. Coût pour le défenseur :
+file descriptor, goroutine de lecture, éventuelle session TLS
+attendue. Variant pré-TLS de slowloris.
+
+**Mitigation.** [`proxy/mitigations/handshakeguard/`](../proxy/mitigations/handshakeguard/).
+Chaque connexion acceptée reçoit un `SetReadDeadline(handshake_window_ms)`.
+Au premier `Read` non vide, la deadline est désactivée (la connexion
+devient « normale »). Si la deadline expire ou si `Close()` est appelé
+sans qu'aucun octet n'ait été lu, l'évènement est compté dans une
+fenêtre glissante (`observe_window_ms`). Au seuil
+`abandon_threshold`, l'IP est rapportée à `ip-reputation` via le
+`Reporter`.
+
+**Limites.**
+- Ne distingue pas une connexion abandonnée légitimement (client
+  mobile changeant de réseau) d'une attaque délibérée. Le seuil
+  d'abandon doit être bien supérieur au bruit de fond observé.
+- Pas d'analyse du contenu : un attaquant peut envoyer un seul octet
+  bidon pour échapper. Combiné à `slowloris` (post-TLS) pour couvrir ce
+  cas.
+
+**Reproducer.** [`proxy/mitigations/handshakeguard/handshakeguard_test.go`](../proxy/mitigations/handshakeguard/handshakeguard_test.go).
+
+**Références.**
+- [Qualys — *Slowloris HTTP DoS* (concept appliqué pré-TLS)](https://web.archive.org/web/20090830055838/http://ha.ckers.org/slowloris/).
+
+---
+
+## geoblock-l4
+
+**Vecteur.** Le service ne s'adresse qu'à un sous-ensemble de pays.
+Tout trafic provenant d'ailleurs est statistiquement hostile (botnets
+géolocalisés, scanners). Refuser ce trafic **avant** le handshake TLS
+économise un coût significatif par tentative.
+
+**Mitigation.** [`proxy/mitigations/geoblockl4/`](../proxy/mitigations/geoblockl4/).
+Lookup ISO-3166-1 alpha-2 via `github.com/phuslu/iploc` (déjà utilisé
+par `proxy/internal/geoip`, base embarquée — pas d'I/O). Liste `block`
+prioritaire sur `allow`. Loopback et préfixes privés renvoient `"LO"`
+et sont toujours laissés passer. Codes inconnus → `"ZZ"`, traités comme
+neutres.
+
+**Limites.**
+- Précision géo limitée par la base `iploc` (≈ 99 % au niveau pays,
+  jamais 100 %). VPN / proxy résidentiels contournent trivialement.
+- Pas de granularité ville / ASN.
+- À combiner avec `ip-reputation` pour les faux positifs.
+
+**Reproducer.** [`proxy/mitigations/geoblockl4/geoblockl4_test.go`](../proxy/mitigations/geoblockl4/geoblockl4_test.go).
+
+**Références.**
+- [phuslu/iploc — Embedded IP geolocation database](https://github.com/phuslu/iploc).
+- [ISO 3166-1 alpha-2 — Country codes](https://www.iso.org/iso-3166-country-codes.html).
+
+---
+
+
 

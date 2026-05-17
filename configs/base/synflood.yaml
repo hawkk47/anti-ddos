@@ -1,0 +1,31 @@
+# configs/base/synflood.yaml
+#
+# Token bucket sur le DÉBIT d'Accept() par IP et par sous-réseau.
+# Couvre les variantes applicatives de SYN-flood (l'OS termine le
+# 3-way handshake, mais la source ouvre des conns à un rythme
+# anormal). En cas de dépassement répété, l'IP est signalée à
+# ip-reputation pour blocage temporaire.
+#
+# Schéma : configs/schemas/synflood.schema.json
+# Mitigation Go : proxy/mitigations/synflood
+# Threat model : docs/threat-model.md#syn-flood
+
+version: 1
+
+rules:
+  - id: syn-flood
+    enabled: false
+    on_error: allow
+    params:
+      # Débit moyen toléré par IP source (Accept/s).
+      accepts_per_second_per_ip: 50
+      burst_per_ip: 100
+      # Idem par /24-/48. 0 = désactivé.
+      accepts_per_second_per_subnet: 500
+      burst_per_subnet: 1000
+      # TTL du signalement vers ip-reputation. 0 = pas de signalement.
+      report_ttl_ms: 600000   # 10 min
+    reason: désactivé par défaut, à activer par environnement
+    notes: |
+      Reproducer : proxy/mitigations/synflood/synflood_test.go
+      Loopback / RFC1918 / ULA exemptés.

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anti-ddos.local/schemas/synflood.schema.json",
+  "title": "syn-flood",
+  "description": "Token bucket sur le débit d'Accept TCP par IP et par sous-réseau ; signale ip-reputation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "rules"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "rules": { "type": "array", "items": { "$ref": "#/$defs/rule" } }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "on_error", "params"],
+      "properties": {
+        "id": { "type": "string", "enum": ["syn-flood"] },
+        "enabled": { "type": "boolean" },
+        "on_error": { "type": "string", "enum": ["allow", "deny"] },
+        "params": { "$ref": "#/$defs/params" },
+        "notes": { "type": "string", "maxLength": 1024 },
+        "reason": { "type": "string", "maxLength": 256 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "enabled": { "const": false } }, "required": ["enabled"] },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepts_per_second_per_ip", "burst_per_ip"],
+      "properties": {
+        "accepts_per_second_per_ip": { "type": "number", "minimum": 0, "maximum": 1000000 },
+        "burst_per_ip": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "accepts_per_second_per_subnet": { "type": "number", "minimum": 0, "maximum": 10000000 },
+        "burst_per_subnet": { "type": "integer", "minimum": 0, "maximum": 10000000 },
+        "report_ttl_ms": { "type": "integer", "minimum": 0, "maximum": 86400000 }
+      }
+    }
+  }
+}

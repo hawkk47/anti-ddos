@@ -1,4 +1,5 @@
-// Catalogue des 14 familles de mitigations exposées par le control plane.
+// Catalogue des 19 familles de mitigations exposées par le control plane
+// (14 L7 + 5 L3/L4, cf. docs/adr/0005-l3l4-listener-wrappers.md).
 // Chaque entrée mappe :
 //   - id   : segment d'URL (`/v1/mitigations/<id>`)
 //   - rid  : id canonique de la règle (souvent identique à id, mais pas
@@ -215,6 +216,75 @@ export const FAMILIES: FamilyDef[] = [
     fields: [
       { name: 'blocked_ja3', label: 'JA3 bloqués', type: { kind: 'csv', itemPattern: '^[a-f0-9]{32}$', placeholder: 'hash1,hash2' } },
       { name: 'blocked_ja4', label: 'JA4 bloqués', type: { kind: 'csv', placeholder: 't13d1517h2_8daa..._b186...' } },
+    ],
+  },
+  // ----- L3/L4 (listener wrappers TCP pré-TLS) -----
+  {
+    id: 'ip-reputation',
+    rid: 'ip-reputation',
+    label: 'IP reputation',
+    desc: 'Allowlist/blocklist CIDR + entrées dynamiques à TTL.',
+    metric: 'mitigation_ip_reputation',
+    stage: 1,
+    fields: [
+      { name: 'allowlist', label: 'Allowlist CIDR', type: { kind: 'csv', placeholder: '10.0.0.0/8,192.168.0.0/16' } },
+      { name: 'allowlist_strict', label: 'Allowlist stricte', type: { kind: 'bool' } },
+      { name: 'blocklist', label: 'Blocklist CIDR', type: { kind: 'csv', placeholder: '203.0.113.0/24' } },
+      { name: 'max_dynamic_entries', label: 'Max entrées dynamiques', type: { kind: 'int', min: 0 } },
+      { name: 'default_block_ttl_ms', label: 'TTL blocage défaut (ms)', type: { kind: 'int', min: 0 } },
+    ],
+  },
+  {
+    id: 'conn-flood',
+    rid: 'conn-flood',
+    label: 'Conn flood',
+    desc: 'Cap connexions simultanées par IP et par sous-réseau.',
+    metric: 'mitigation_conn_flood',
+    stage: 1,
+    fields: [
+      { name: 'max_conns_per_ip', label: 'Max conns / IP', type: { kind: 'int', min: 0 } },
+      { name: 'max_conns_per_subnet', label: 'Max conns / sous-réseau', type: { kind: 'int', min: 0 } },
+    ],
+  },
+  {
+    id: 'syn-flood',
+    rid: 'syn-flood',
+    label: 'SYN flood',
+    desc: 'Token bucket sur le taux d\u2019Accept par IP (report vers IP reputation).',
+    metric: 'mitigation_syn_flood',
+    stage: 1,
+    fields: [
+      { name: 'accepts_per_second_per_ip', label: 'Accepts/s / IP', type: { kind: 'int', min: 0 } },
+      { name: 'burst_per_ip', label: 'Burst / IP', type: { kind: 'int', min: 0 } },
+      { name: 'accepts_per_second_per_subnet', label: 'Accepts/s / sous-réseau', type: { kind: 'int', min: 0 } },
+      { name: 'burst_per_subnet', label: 'Burst / sous-réseau', type: { kind: 'int', min: 0 } },
+      { name: 'report_ttl_ms', label: 'TTL report (ms)', type: { kind: 'int', min: 0 } },
+    ],
+  },
+  {
+    id: 'handshake-guard',
+    rid: 'handshake-guard',
+    label: 'Handshake guard',
+    desc: 'Détecte les TCP half-open applicatifs (aucun octet utile).',
+    metric: 'mitigation_handshake_guard',
+    stage: 1,
+    fields: [
+      { name: 'handshake_window_ms', label: 'Fenêtre 1er octet (ms)', type: { kind: 'int', min: 100 } },
+      { name: 'abandon_threshold', label: 'Seuil abandons', type: { kind: 'int', min: 1 } },
+      { name: 'observe_window_ms', label: 'Fenêtre glissante (ms)', type: { kind: 'int', min: 1000 } },
+      { name: 'report_ttl_ms', label: 'TTL report (ms)', type: { kind: 'int', min: 0 } },
+    ],
+  },
+  {
+    id: 'geoblock-l4',
+    rid: 'geoblock-l4',
+    label: 'Geoblock L4',
+    desc: 'Filtre ISO-3166 alpha-2 dès l\u2019Accept (loopback exempté).',
+    metric: 'mitigation_geoblock_l4',
+    stage: 1,
+    fields: [
+      { name: 'allow', label: 'Pays autorisés', type: { kind: 'csv', itemPattern: '^[A-Za-z]{2}$', placeholder: 'FR,DE,BE' } },
+      { name: 'block', label: 'Pays bloqués', type: { kind: 'csv', itemPattern: '^[A-Za-z]{2}$', placeholder: 'CN,RU' } },
     ],
   },
 ];

@@ -17,22 +17,27 @@ import (
 	"anti-ddos/proxy/internal/metrics"
 	"anti-ddos/proxy/mitigations/cachepoison"
 	"anti-ddos/proxy/mitigations/concurrency"
+	"anti-ddos/proxy/mitigations/connflood"
 	"anti-ddos/proxy/mitigations/credstuff"
+	"anti-ddos/proxy/mitigations/geoblockl4"
+	"anti-ddos/proxy/mitigations/handshakeguard"
 	"anti-ddos/proxy/mitigations/hashflood"
 	"anti-ddos/proxy/mitigations/http2reset"
 	"anti-ddos/proxy/mitigations/httpflood"
+	"anti-ddos/proxy/mitigations/ipreputation"
 	"anti-ddos/proxy/mitigations/largeheader"
 	"anti-ddos/proxy/mitigations/rangeamp"
 	"anti-ddos/proxy/mitigations/requesthygiene"
 	"anti-ddos/proxy/mitigations/scraping"
 	"anti-ddos/proxy/mitigations/slowloris"
 	"anti-ddos/proxy/mitigations/slowpost"
+	"anti-ddos/proxy/mitigations/synflood"
 	"anti-ddos/proxy/mitigations/tlsfingerprint"
 	"anti-ddos/proxy/mitigations/tlsreneg"
 )
 
 // Handler construit le mux admin.
-func Handler(slow *slowloris.Limiter, flood *httpflood.Limiter, hdr *largeheader.Limiter, body *slowpost.Limiter, tls *tlsreneg.Limiter, h2 *http2reset.Limiter, hash *hashflood.Limiter, rng *rangeamp.Limiter, cache *cachepoison.Limiter, scrap *scraping.Limiter, cred *credstuff.Limiter, conc *concurrency.Limiter, hyg *requesthygiene.Limiter, tlsfp *tlsfingerprint.Limiter, credBlocklist *blocklist.Set, reg metrics.Registry) http.Handler {
+func Handler(slow *slowloris.Limiter, flood *httpflood.Limiter, hdr *largeheader.Limiter, body *slowpost.Limiter, tls *tlsreneg.Limiter, h2 *http2reset.Limiter, hash *hashflood.Limiter, rng *rangeamp.Limiter, cache *cachepoison.Limiter, scrap *scraping.Limiter, cred *credstuff.Limiter, conc *concurrency.Limiter, hyg *requesthygiene.Limiter, tlsfp *tlsfingerprint.Limiter, ipreput *ipreputation.Limiter, cflood *connflood.Limiter, sflood *synflood.Limiter, hguard *handshakeguard.Limiter, geol4 *geoblockl4.Limiter, credBlocklist *blocklist.Set, reg metrics.Registry) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/_admin/v1/mitigations/connections", connectionsHandler(slow))
 	mux.Handle("/_admin/v1/mitigations/ratelimit", ratelimitHandler(flood))
@@ -48,6 +53,11 @@ func Handler(slow *slowloris.Limiter, flood *httpflood.Limiter, hdr *largeheader
 	mux.Handle("/_admin/v1/mitigations/concurrency", concurrencyHandler(conc))
 	mux.Handle("/_admin/v1/mitigations/request-hygiene", requestHygieneHandler(hyg))
 	mux.Handle("/_admin/v1/mitigations/tls-fingerprint", tlsFingerprintHandler(tlsfp))
+	mux.Handle("/_admin/v1/mitigations/ip-reputation", ipReputationHandler(ipreput))
+	mux.Handle("/_admin/v1/mitigations/conn-flood", connFloodHandler(cflood))
+	mux.Handle("/_admin/v1/mitigations/syn-flood", synFloodHandler(sflood))
+	mux.Handle("/_admin/v1/mitigations/handshake-guard", handshakeGuardHandler(hguard))
+	mux.Handle("/_admin/v1/mitigations/geoblock-l4", geoBlockL4Handler(geol4))
 	mux.Handle("/_admin/v1/blocklist/credstuff", blocklistHandler(credBlocklist))
 	mux.Handle("/_admin/v1/metrics", metricsHandler(reg))
 	mux.HandleFunc("/_admin/v1/health", func(w http.ResponseWriter, r *http.Request) {

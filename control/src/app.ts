@@ -77,6 +77,23 @@ import {
   type TLSFingerprintStore,
 } from './mitigations/tlsfingerprint.js';
 import {
+  createInMemoryIPReputationStore,
+  createInMemoryConnFloodStore,
+  createInMemorySynFloodStore,
+  createInMemoryHandshakeGuardStore,
+  createInMemoryGeoBlockL4Store,
+  registerIPReputationRoutes,
+  registerConnFloodRoutes,
+  registerSynFloodRoutes,
+  registerHandshakeGuardRoutes,
+  registerGeoBlockL4Routes,
+  type IPReputationStore,
+  type ConnFloodStore,
+  type SynFloodStore,
+  type HandshakeGuardStore,
+  type GeoBlockL4Store,
+} from './mitigations/l3l4.js';
+import {
   createInMemoryBehavioralCredStuffStore,
   registerBehavioralCredStuffRoutes,
   type BehavioralCredStuffStore,
@@ -124,6 +141,16 @@ export interface BuildOptions {
   requestHygieneStore?: RequestHygieneStore;
   /** Store tls-fingerprint injectable. */
   tlsFingerprintStore?: TLSFingerprintStore;
+  /** Store ip-reputation (L3/L4) injectable. */
+  ipReputationStore?: IPReputationStore;
+  /** Store conn-flood (L3/L4) injectable. */
+  connFloodStore?: ConnFloodStore;
+  /** Store syn-flood (L3/L4) injectable. */
+  synFloodStore?: SynFloodStore;
+  /** Store handshake-guard (L3/L4) injectable. */
+  handshakeGuardStore?: HandshakeGuardStore;
+  /** Store geoblock-l4 (L3/L4) injectable. */
+  geoBlockL4Store?: GeoBlockL4Store;
   /** Store behavioral credential-stuffing (ADR 0004 phase 3) injectable. */
   behavioralCredStuffStore?: BehavioralCredStuffStore;
   /** Override partiel des seuils behavioral (10 min, 20/5/50 par défaut). */
@@ -168,6 +195,11 @@ export function buildApp(opts: BuildOptions): FastifyInstance {
     concurrencyStore = createInMemoryConcurrencyStore(),
     requestHygieneStore = createInMemoryRequestHygieneStore(),
     tlsFingerprintStore = createInMemoryTLSFingerprintStore(),
+    ipReputationStore = createInMemoryIPReputationStore(),
+    connFloodStore = createInMemoryConnFloodStore(),
+    synFloodStore = createInMemorySynFloodStore(),
+    handshakeGuardStore = createInMemoryHandshakeGuardStore(),
+    geoBlockL4Store = createInMemoryGeoBlockL4Store(),
     behavioralCredStuffStore,
     behavioralCredStuffThresholds,
     behavioralCredStuffPusher,
@@ -291,6 +323,11 @@ export function buildApp(opts: BuildOptions): FastifyInstance {
       const concurrencySnapshot = concurrencyStore.list();
       const requestHygieneSnapshot = requestHygieneStore.list();
       const tlsFingerprintSnapshot = tlsFingerprintStore.list();
+      const ipReputationSnapshot = ipReputationStore.list();
+      const connFloodSnapshot = connFloodStore.list();
+      const synFloodSnapshot = synFloodStore.list();
+      const handshakeGuardSnapshot = handshakeGuardStore.list();
+      const geoBlockL4Snapshot = geoBlockL4Store.list();
       const targets: Array<{ url: string; payload: unknown; family: string }> = [
         {
           url: `${config.proxyAdminUrl}/_admin/v1/mitigations/connections`,
@@ -362,6 +399,31 @@ export function buildApp(opts: BuildOptions): FastifyInstance {
           payload: tlsFingerprintSnapshot,
           family: 'tls-fingerprint',
         },
+        {
+          url: `${config.proxyAdminUrl}/_admin/v1/mitigations/ip-reputation`,
+          payload: ipReputationSnapshot,
+          family: 'ip-reputation',
+        },
+        {
+          url: `${config.proxyAdminUrl}/_admin/v1/mitigations/conn-flood`,
+          payload: connFloodSnapshot,
+          family: 'conn-flood',
+        },
+        {
+          url: `${config.proxyAdminUrl}/_admin/v1/mitigations/syn-flood`,
+          payload: synFloodSnapshot,
+          family: 'syn-flood',
+        },
+        {
+          url: `${config.proxyAdminUrl}/_admin/v1/mitigations/handshake-guard`,
+          payload: handshakeGuardSnapshot,
+          family: 'handshake-guard',
+        },
+        {
+          url: `${config.proxyAdminUrl}/_admin/v1/mitigations/geoblock-l4`,
+          payload: geoBlockL4Snapshot,
+          family: 'geoblock-l4',
+        },
       ];
       const totalRules =
         connSnapshot.rules.length +
@@ -377,7 +439,12 @@ export function buildApp(opts: BuildOptions): FastifyInstance {
         credStuffSnapshot.rules.length +
         concurrencySnapshot.rules.length +
         requestHygieneSnapshot.rules.length +
-        tlsFingerprintSnapshot.rules.length;
+        tlsFingerprintSnapshot.rules.length +
+        ipReputationSnapshot.rules.length +
+        connFloodSnapshot.rules.length +
+        synFloodSnapshot.rules.length +
+        handshakeGuardSnapshot.rules.length +
+        geoBlockL4Snapshot.rules.length;
       req.log.info({
         msg: 'reload pushing',
         rev: {
@@ -395,6 +462,11 @@ export function buildApp(opts: BuildOptions): FastifyInstance {
           'concurrency-cap': concurrencySnapshot.rev,
           'request-hygiene': requestHygieneSnapshot.rev,
           'tls-fingerprint': tlsFingerprintSnapshot.rev,
+          'ip-reputation': ipReputationSnapshot.rev,
+          'conn-flood': connFloodSnapshot.rev,
+          'syn-flood': synFloodSnapshot.rev,
+          'handshake-guard': handshakeGuardSnapshot.rev,
+          'geoblock-l4': geoBlockL4Snapshot.rev,
         },
         rules: totalRules,
       });
@@ -458,6 +530,11 @@ export function buildApp(opts: BuildOptions): FastifyInstance {
     { family: 'concurrency', store: concurrencyStore },
     { family: 'request-hygiene', store: requestHygieneStore },
     { family: 'tls-fingerprint', store: tlsFingerprintStore },
+    { family: 'ip-reputation', store: ipReputationStore },
+    { family: 'conn-flood', store: connFloodStore },
+    { family: 'syn-flood', store: synFloodStore },
+    { family: 'handshake-guard', store: handshakeGuardStore },
+    { family: 'geoblock-l4', store: geoBlockL4Store },
   ];
   registerPersistence(app, config.stateDir ?? '', bindings);
 
@@ -517,6 +594,15 @@ export function buildApp(opts: BuildOptions): FastifyInstance {
   // Mitigations / tls-fingerprint (JA3 + JA4 blocklist au handshake).
   // ----------------------------------------------------------------
   registerTLSFingerprintRoutes(app, tlsFingerprintStore);
+  // ----------------------------------------------------------------
+  // Mitigations L3/L4 : ip-reputation, conn-flood, syn-flood,
+  // handshake-guard, geoblock-l4. Listener wrappers côté data plane.
+  // ----------------------------------------------------------------
+  registerIPReputationRoutes(app, ipReputationStore);
+  registerConnFloodRoutes(app, connFloodStore);
+  registerSynFloodRoutes(app, synFloodStore);
+  registerHandshakeGuardRoutes(app, handshakeGuardStore);
+  registerGeoBlockL4Routes(app, geoBlockL4Store);
   // ----------------------------------------------------------------
   // Behavioral / credential-stuffing (ADR 0004 phase 3).
   // Fenêtre glissante 10 min, heuristiques per-user + per-IP.
