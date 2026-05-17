@@ -1,14 +1,22 @@
 <script lang="ts">
   import type { FamilyDef } from '../lib/families';
   import { theme, cycleTheme } from '../lib/theme';
+  import { connectivity } from '../lib/stores';
 
   export let families: FamilyDef[];
   export let currentId: string | null;
-  export let currentView: 'pipeline' | 'dashboard' | 'family' = 'pipeline';
+  export let currentView: 'overview' | 'pipeline' | 'dashboard' | 'family' = 'overview';
 
   function themeIcon(t: typeof $theme): string {
     return t === 'dark' ? '◐' : t === 'light' ? '◑' : '◓';
   }
+
+  $: proxyUp = $connectivity.proxyUp;
+  $: dotClass = proxyUp === null ? 'unknown' : proxyUp ? 'ok' : 'err';
+  $: dotTitle =
+    proxyUp === null ? 'data plane : statut inconnu'
+    : proxyUp ? 'data plane joignable'
+    : 'data plane injoignable';
 </script>
 
 <aside>
@@ -24,7 +32,10 @@
   </header>
 
   <nav>
-    <a class:active={currentView === 'pipeline'} href="#/">
+    <a class:active={currentView === 'overview'} href="#/">
+      <span class="lbl">Overview</span>
+    </a>
+    <a class:active={currentView === 'pipeline'} href="#/pipeline">
       <span class="lbl">Pipeline</span>
     </a>
     <a class:active={currentView === 'dashboard'} href="#/dashboard">
@@ -39,7 +50,10 @@
     {/each}
   </nav>
   <footer>
-    <span class="ft-count">{families.length} familles</span>
+    <span class="ft-count">
+      <span class="dot {dotClass}" title={dotTitle} aria-label={dotTitle}></span>
+      {families.length} familles
+    </span>
     <span class="ft-kbd"><kbd>Ctrl</kbd><kbd>K</kbd></span>
   </footer>
 </aside>
@@ -144,6 +158,17 @@
     justify-content: space-between;
     align-items: center;
   }
+  .ft-count { display: inline-flex; align-items: center; gap: 6px; }
+  .dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-faint);
+  }
+  .dot.ok      { background: var(--ok); box-shadow: 0 0 6px rgba(16, 185, 129, 0.6); }
+  .dot.err     { background: var(--err); box-shadow: 0 0 6px rgba(239, 68, 68, 0.6); }
+  .dot.unknown { background: var(--text-faint); }
   .ft-kbd { display: inline-flex; gap: 3px; }
   kbd {
     background: var(--bg);

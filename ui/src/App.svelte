@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { FAMILIES, familyById } from './lib/families';
   import Sidebar from './components/Sidebar.svelte';
+  import Overview from './components/Overview.svelte';
   import Pipeline from './components/Pipeline.svelte';
   import Dashboard from './components/Dashboard.svelte';
   import FamilyPanel from './components/FamilyPanel.svelte';
@@ -12,6 +13,7 @@
   import { api, ApiCallError } from './lib/api';
 
   type Route =
+    | { view: 'overview' }
     | { view: 'pipeline' }
     | { view: 'dashboard' }
     | { view: 'family'; id: string };
@@ -22,7 +24,8 @@
       if (familyById(id)) return { view: 'family', id };
     }
     if (h === '#/dashboard') return { view: 'dashboard' };
-    return { view: 'pipeline' };
+    if (h === '#/pipeline')  return { view: 'pipeline' };
+    return { view: 'overview' };
   }
 
   let route: Route = parseHash(location.hash);
@@ -38,7 +41,7 @@
   function showHelp() {
     pushToast(
       'info',
-      'Raccourcis : Ctrl+K palette · g p pipeline · g d dashboard · r reload · ? aide',
+      'Raccourcis : Ctrl+K palette · g o overview · g p pipeline · g d dashboard · r reload · ? aide',
       6000,
     );
   }
@@ -67,7 +70,8 @@
       return;
     }
     if (pendingG) {
-      if (e.key === 'p') { e.preventDefault(); location.hash = '#/'; }
+      if (e.key === 'o')      { e.preventDefault(); location.hash = '#/'; }
+      else if (e.key === 'p') { e.preventDefault(); location.hash = '#/pipeline'; }
       else if (e.key === 'd') { e.preventDefault(); location.hash = '#/dashboard'; }
       resetG();
     }
@@ -91,7 +95,9 @@
 <div class="layout">
   <Sidebar families={FAMILIES} {currentId} {currentView} />
   <main>
-    {#if route.view === 'pipeline'}
+    {#if route.view === 'overview'}
+      <Overview />
+    {:else if route.view === 'pipeline'}
       <Pipeline />
     {:else if route.view === 'dashboard'}
       <Dashboard families={FAMILIES} />

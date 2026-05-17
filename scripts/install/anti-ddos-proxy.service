@@ -1,0 +1,38 @@
+[Unit]
+Description=anti-ddos data plane (reverse proxy + L3/L4 + L7 mitigations)
+Documentation=https://github.com/hawkk47/anti-ddos
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=anti-ddos
+Group=anti-ddos
+WorkingDirectory=/opt/anti-ddos
+EnvironmentFile=-/etc/anti-ddos/proxy.env
+ExecStart=/opt/anti-ddos/bin/anti-ddos-proxy
+Restart=on-failure
+RestartSec=2s
+LimitNOFILE=1048576
+
+# Hardening — pas de cgo, donc on peut sandboxer agressivement.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/log/anti-ddos /var/lib/anti-ddos
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target
