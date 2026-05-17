@@ -5,7 +5,7 @@
 
   export let families: FamilyDef[];
   export let currentId: string | null;
-  export let currentView: 'overview' | 'pipeline' | 'dashboard' | 'family' = 'overview';
+  export let currentView: 'overview' | 'pipeline' | 'family' = 'overview';
 
   function themeIcon(t: typeof $theme): string {
     return t === 'dark' ? '◐' : t === 'light' ? '◑' : '◓';
@@ -37,9 +37,6 @@
     </a>
     <a class:active={currentView === 'pipeline'} href="#/pipeline">
       <span class="lbl">Pipeline</span>
-    </a>
-    <a class:active={currentView === 'dashboard'} href="#/dashboard">
-      <span class="lbl">Dashboard</span>
     </a>
     <div class="group">Mitigations</div>
     {#each families as f (f.id)}
@@ -85,7 +82,6 @@
     background: var(--accent);
     border-radius: 2px;
     align-self: center;
-    box-shadow: 0 0 0 3px var(--accent-tint);
   }
   .title {
     font-weight: 600;
@@ -166,8 +162,8 @@
     border-radius: 50%;
     background: var(--text-faint);
   }
-  .dot.ok      { background: var(--ok); box-shadow: 0 0 6px rgba(16, 185, 129, 0.6); }
-  .dot.err     { background: var(--err); box-shadow: 0 0 6px rgba(239, 68, 68, 0.6); }
+  .dot.ok      { background: var(--ok); }
+  .dot.err     { background: var(--err); }
   .dot.unknown { background: var(--text-faint); }
   .ft-kbd { display: inline-flex; gap: 3px; }
   kbd {

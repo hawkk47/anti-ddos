@@ -17,19 +17,20 @@
     const blocked = fams.reduce((a, f) => a + ($snapshot.blockedByMetric[f.metric] ?? 0), 0);
     const rate    = fams.reduce((a, f) => a + ($snapshot.ratesByMetric[f.metric]   ?? 0), 0);
     const enabled = fams.reduce((a, f) => a + ($snapshot.famState[f.id]?.enabled ?? 0), 0);
-    return { id: s.id, label: s.label, count: fams.length, blocked, rate, enabled };
+    const total   = fams.reduce((a, f) => a + ($snapshot.famState[f.id]?.total ?? 0), 0);
+    return { id: s.id, label: s.label, count: fams.length, blocked, rate, enabled, total };
   });
 </script>
 
-<div class="page">
-  <header class="page-head">
+<section class="page">
+  <header class="head">
     <div>
       <h1>Pipeline</h1>
-      <p>Architecture des étages de mitigation traversés par chaque requête.</p>
+      <p>Étages de mitigation traversés par chaque requête.</p>
     </div>
-    <div class="controls">
-      <label class="poll" title="Intervalle de rafraîchissement">
-        <span>refresh</span>
+    <div class="meta">
+      <label>
+        refresh
         <select bind:value={$pollMs}>
           <option value={1000}>1s</option>
           <option value={2000}>2s</option>
@@ -37,167 +38,117 @@
           <option value={10000}>10s</option>
         </select>
       </label>
-      <span class="tick mono">
-        {$snapshot.lastTickAt ? $snapshot.lastTickAt.toLocaleTimeString() : '—'}
-      </span>
+      <span class="tick mono">{$snapshot.lastTickAt ? $snapshot.lastTickAt.toLocaleTimeString() : '—'}</span>
     </div>
   </header>
 
   {#if $snapshot.metricsError}
-    <div class="banner-err mono">métriques injoignables : {$snapshot.metricsError}</div>
+    <div class="err mono">métriques injoignables : {$snapshot.metricsError}</div>
   {/if}
 
-  <section class="diagram-wrap">
+  <div class="diagram">
     <PipelineDiagram
       families={FAMILIES}
       rates={$snapshot.ratesByMetric}
       blocked={$snapshot.blockedByMetric}
       statusOf={statusOf}
     />
-  </section>
+  </div>
 
-  <section class="legend">
-    <div class="legend-item"><span class="dot active"></span> active</div>
-    <div class="legend-item"><span class="dot dormant"></span> dormant</div>
-    <div class="legend-item"><span class="dot error"></span> erreur control plane</div>
-    <div class="legend-item"><span class="line-cold"></span> flux nominal</div>
-    <div class="legend-item"><span class="line-hot"></span> flux avec blocages</div>
-  </section>
+  <div class="legend">
+    <span><i class="dot ok"></i> active</span>
+    <span><i class="dot dim"></i> dormant</span>
+    <span><i class="dot err"></i> erreur</span>
+    <span><i class="line cold"></i> nominal</span>
+    <span><i class="line hot"></i> blocages</span>
+  </div>
 
-  <section class="stages-grid">
-    {#each stageStats as s (s.id)}
-      <div class="stage-card">
-        <div class="stage-num mono">S{s.id}</div>
-        <div class="stage-name">{s.label}</div>
-        <div class="stage-stats mono">
-          <span title="familles">{s.count} fam.</span>
-          <span class="dim">·</span>
-          <span title="règles activées">{s.enabled} actives</span>
-          <span class="dim">·</span>
-          <span class:hot={s.rate > 0}>{s.rate > 0 ? '+' + fmt(s.rate) + '/s' : fmt(s.blocked)}</span>
-        </div>
-      </div>
-    {/each}
-  </section>
-</div>
+  <table class="t">
+    <thead>
+      <tr>
+        <th>Stage</th>
+        <th>Nom</th>
+        <th class="num">Familles</th>
+        <th class="num">Règles actives</th>
+        <th class="num">Bloqués</th>
+        <th class="num">Δ/s</th>
+      </tr>
+    </thead>
+    <tbody>
+      {#each stageStats as s (s.id)}
+        <tr>
+          <td class="mono dim">S{s.id}</td>
+          <td>{s.label}</td>
+          <td class="mono num">{s.count}</td>
+          <td class="mono num dim">{s.enabled}/{s.total}</td>
+          <td class="mono num">{fmt(s.blocked)}</td>
+          <td class="mono num" class:hot={s.rate > 0}>{s.rate > 0 ? '+' + fmt(s.rate) : '—'}</td>
+        </tr>
+      {/each}
+    </tbody>
+  </table>
+</section>
 
 <style>
-  .page { display: flex; flex-direction: column; gap: 18px; max-width: 1600px; }
+  .page { display: flex; flex-direction: column; gap: 16px; max-width: 1400px; }
 
-  .page-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
+  .head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 16px; flex-wrap: wrap;
   }
-  .page-head h1 {
-    margin: 0;
-    font-size: 20px;
-    font-weight: 600;
-    letter-spacing: -0.3px;
-    color: var(--text);
-  }
-  .page-head p {
-    margin: 4px 0 0;
-    font-size: 12.5px;
-    color: var(--text-faint);
-  }
-  .controls { display: flex; align-items: center; gap: 10px; }
-  .poll {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11.5px;
-    color: var(--text-faint);
-  }
-  .poll select { font-size: 11.5px; padding: 3px 6px; }
-  .tick { font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+  h1 { margin: 0; font-size: 17px; font-weight: 600; color: var(--text); letter-spacing: -0.2px; }
+  .head p { margin: 2px 0 0; font-size: 12px; color: var(--text-faint); }
 
-  .banner-err {
-    color: var(--err);
-    font-size: 12px;
-    padding: 8px 12px;
-    border-radius: 6px;
-    border: 1px solid rgba(239, 68, 68, 0.35);
-    background: rgba(239, 68, 68, 0.06);
+  .meta { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--text-faint); }
+  .meta select { font-size: 11.5px; padding: 2px 6px; }
+  .tick { font-variant-numeric: tabular-nums; }
+
+  .err {
+    padding: 8px 12px; font-size: 12px;
+    border: 1px solid var(--border-strong); border-radius: 6px;
+    color: var(--err); background: var(--bg-elev);
   }
 
-  .diagram-wrap {
+  .diagram {
     background: var(--bg-elev);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 8px;
+    border-radius: 8px;
+    padding: 12px;
   }
 
   .legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
-    padding: 10px 14px;
+    display: flex; flex-wrap: wrap; gap: 16px;
+    padding: 8px 14px;
     background: var(--bg-elev);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    font-size: 11.5px;
-    color: var(--text-faint);
+    border-radius: 6px;
+    font-size: 11.5px; color: var(--text-faint);
   }
-  .legend-item { display: inline-flex; align-items: center; gap: 6px; }
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    display: inline-block;
-  }
-  .dot.active  { background: var(--ok); box-shadow: 0 0 6px rgba(16, 185, 129, 0.6); }
-  .dot.dormant { background: var(--text-faint); }
-  .dot.error   { background: var(--err); box-shadow: 0 0 6px rgba(239, 68, 68, 0.6); }
-  .line-cold {
-    width: 22px; height: 1px;
-    background: var(--border-strong);
-    display: inline-block;
-  }
-  .line-hot {
-    width: 22px; height: 1px;
-    background: var(--neon-orange);
-    box-shadow: 0 0 6px var(--neon-orange-glow);
-    display: inline-block;
-  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .dot.ok  { background: var(--ok); }
+  .dot.dim { background: var(--text-faint); }
+  .dot.err { background: var(--err); }
+  .line { width: 20px; height: 1px; display: inline-block; }
+  .line.cold { background: var(--border-strong); }
+  .line.hot  { background: var(--accent); }
 
-  .stages-grid {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 10px;
+  .t {
+    width: 100%; border-collapse: collapse; font-size: 12.5px;
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden;
   }
-  @media (max-width: 1100px) {
-    .stages-grid { grid-template-columns: repeat(2, 1fr); }
+  .t th, .t td {
+    padding: 9px 14px; text-align: left;
+    border-bottom: 1px solid var(--border);
   }
-  .stage-card {
-    background: var(--bg-elev);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+  .t thead th {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px;
+    font-weight: 500; color: var(--text-faint);
   }
-  .stage-num {
-    font-size: 10.5px;
-    color: var(--text-faint);
-    letter-spacing: 0.6px;
-    font-weight: 600;
-  }
-  .stage-name {
-    font-size: 13px;
-    color: var(--text);
-    font-weight: 500;
-  }
-  .stage-stats {
-    display: flex;
-    gap: 6px;
-    font-size: 11.5px;
-    color: var(--text-dim);
-    font-variant-numeric: tabular-nums;
-  }
-  .stage-stats .dim { color: var(--text-faint); }
-  .stage-stats .hot { color: var(--neon-orange); font-weight: 600; }
+  .t tbody tr:last-child td { border-bottom: none; }
+  .t tbody tr:hover td { background: var(--bg-row); }
+  .t .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .t .dim { color: var(--text-faint); }
+  .t .hot { color: var(--accent); font-weight: 600; }
 </style>

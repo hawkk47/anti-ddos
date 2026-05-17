@@ -53,7 +53,6 @@
     const actions: Item[] = [
       { kind: 'nav', label: 'Overview', sub: 'KPI · débit · activité', href: '#/', keys: 'overview accueil home kpi' },
       { kind: 'nav', label: 'Pipeline', sub: 'diagramme par étages', href: '#/pipeline', keys: 'pipeline diagramme etages' },
-      { kind: 'nav', label: 'Dashboard', sub: 'tableau de bord', href: '#/dashboard', keys: 'dashboard tableau' },
       { kind: 'action', label: 'Recharger le data plane', sub: 'POST /v1/reload', run: reloadDataPlane, keys: 'reload data plane push deploy' },
       { kind: 'action', label: 'Cycle thème (auto → dark → light)', sub: 'apparence', run: cycleTheme, keys: 'theme dark light mode apparence' },
     ];

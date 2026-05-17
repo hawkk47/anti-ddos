@@ -4,7 +4,6 @@
   import Sidebar from './components/Sidebar.svelte';
   import Overview from './components/Overview.svelte';
   import Pipeline from './components/Pipeline.svelte';
-  import Dashboard from './components/Dashboard.svelte';
   import FamilyPanel from './components/FamilyPanel.svelte';
   import Toasts from './components/Toasts.svelte';
   import CommandPalette from './components/CommandPalette.svelte';
@@ -15,7 +14,6 @@
   type Route =
     | { view: 'overview' }
     | { view: 'pipeline' }
-    | { view: 'dashboard' }
     | { view: 'family'; id: string };
 
   function parseHash(h: string): Route {
@@ -23,7 +21,6 @@
       const id = h.slice(4);
       if (familyById(id)) return { view: 'family', id };
     }
-    if (h === '#/dashboard') return { view: 'dashboard' };
     if (h === '#/pipeline')  return { view: 'pipeline' };
     return { view: 'overview' };
   }
@@ -41,7 +38,7 @@
   function showHelp() {
     pushToast(
       'info',
-      'Raccourcis : Ctrl+K palette · g o overview · g p pipeline · g d dashboard · r reload · ? aide',
+      'Raccourcis : Ctrl+K palette · g o overview · g p pipeline · r reload · ? aide',
       6000,
     );
   }
@@ -72,7 +69,6 @@
     if (pendingG) {
       if (e.key === 'o')      { e.preventDefault(); location.hash = '#/'; }
       else if (e.key === 'p') { e.preventDefault(); location.hash = '#/pipeline'; }
-      else if (e.key === 'd') { e.preventDefault(); location.hash = '#/dashboard'; }
       resetG();
     }
   }
@@ -99,8 +95,6 @@
       <Overview />
     {:else if route.view === 'pipeline'}
       <Pipeline />
-    {:else if route.view === 'dashboard'}
-      <Dashboard families={FAMILIES} />
     {:else if fam}
       <FamilyPanel family={fam} />
     {:else}
